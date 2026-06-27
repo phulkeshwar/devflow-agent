@@ -1,14 +1,22 @@
 import os
 from dotenv import load_dotenv
+load_dotenv(override=True)
+
+# Purge inherited GCP environment variables to force google-genai to use the API key
+for gcp_var in ["GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_API_KEY"]:
+    if gcp_var in os.environ:
+        del os.environ[gcp_var]
+
+# Force Google AI Studio mode instead of Vertex AI mode (prevents GCP project inheritance conflict)
+os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "False"
+
 from google.adk.agents import Agent
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from tools import fetch_github_issue, fetch_repo_files, fetch_file_content
 
-load_dotenv()
-
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 
 # ── Agent 1: Reader Agent ──────────────────────────────────────────
 reader_agent = Agent(
@@ -80,7 +88,7 @@ def run_agent(agent: Agent, user_message: str, session_id: str) -> str:
         app_name=APP_NAME,
         session_service=session_service
     )
-    session_service.create_session(
+    session_service.create_session_sync(
         app_name=APP_NAME,
         user_id="user_1",
         session_id=session_id
@@ -95,8 +103,10 @@ def run_agent(agent: Agent, user_message: str, session_id: str) -> str:
         session_id=session_id,
         new_message=content
     ):
-        if event.is_final_response():
-            final_response = event.response.candidates[0].content.parts[0].text
+        if getattr(event, "content", None) and event.content.parts:
+            for part in event.content.parts:
+                if hasattr(part, "text") and part.text:
+                    final_response += part.text
     return final_response
 
 def run_devflow_pipeline(owner: str, repo: str, issue_number: int) -> dict:
