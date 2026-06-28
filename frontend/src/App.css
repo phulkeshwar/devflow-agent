@@ -689,3 +689,183 @@ input::placeholder {
     width: 100%;
   }
 }
+
+/* Documentation Button and Modal CSS */
+.docs-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ff6b00;
+  border: 1px solid rgba(255, 107, 0, 0.2);
+  background: rgba(255, 107, 0, 0.05);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.docs-btn:hover {
+  background: rgba(255, 107, 0, 0.12);
+  border-color: rgba(255, 107, 0, 0.4);
+  box-shadow: 0 0 10px rgba(255, 107, 0, 0.1);
+}
+
+.docs-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.docs-modal {
+  background: #0a0a0a;
+  border: 1px solid #1f1f1f;
+  border-radius: 14px;
+  width: 100%;
+  max-width: 680px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 40px rgba(255, 107, 0, 0.05);
+  animation: scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.docs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #1f1f1f;
+}
+
+.docs-header h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  color: #888888;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  transition: color 0.2s ease;
+}
+
+.close-btn:hover {
+  color: #ff6b00;
+}
+
+.docs-body {
+  padding: 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.docs-section h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 10px;
+  border-left: 2px solid #ff6b00;
+  padding-left: 10px;
+}
+
+.docs-section p {
+  font-size: 13px;
+  color: #a3a3a3;
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+
+.docs-section ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 4px;
+}
+
+.docs-section li {
+  font-size: 13px;
+  color: #a3a3a3;
+  line-height: 1.5;
+}
+
+.docs-section li strong {
+  color: #fafafa;
+}
+
+.format-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.format-card {
+  background: #111111;
+  border: 1px solid #1f1f1f;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.format-card h4 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ff6b00;
+  margin-bottom: 6px;
+}
+
+.format-card p {
+  font-size: 11px;
+  color: #888888;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.format-card code {
+  display: block;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  background: #000000;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid #1f1f1f;
+  color: #eaeaea;
+  word-break: break-all;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.96); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@media (max-width: 600px) {
+  .format-grid {
+    grid-template-columns: 1fr;
+  }
+}

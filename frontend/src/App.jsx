@@ -23,6 +23,7 @@ function App() {
   
   // Tab state: "reader", "coder", or "reviewer"
   const [activeTab, setActiveTab] = useState("reader");
+  const [showDocs, setShowDocs] = useState(false);
 
   // Helper to copy code to clipboard
   const copyToClipboard = (text) => {
@@ -244,6 +245,9 @@ function App() {
           <span className="logo-text">DevFlow <span>Agent</span></span>
         </div>
         <div className="header-actions">
+          <button onClick={() => setShowDocs(true)} className="docs-btn">
+            📚 Docs
+          </button>
           <a
             href="https://github.com/phulkeshwar/devflow-agent"
             target="_blank"
@@ -509,6 +513,59 @@ function App() {
           </div>
         )}
       </main>
+
+      {showDocs && (
+        <div className="docs-modal-overlay" onClick={() => setShowDocs(false)}>
+          <div className="docs-modal" onClick={(e) => e.stopPropagation()}>
+            <header className="docs-header">
+              <h2>📚 DevFlow Agent Pipeline Documentation</h2>
+              <button className="close-btn" onClick={() => setShowDocs(false)}>×</button>
+            </header>
+            <div className="docs-body">
+              <section className="docs-section">
+                <h3>🔍 1. How It Works</h3>
+                <p>DevFlow runs a multi-agent collaboration flow using Google Gemini & ADK:</p>
+                <ul>
+                  <li><strong>Reader Agent:</strong> Fetches the GitHub issue details, scans the repository directories recursively, and identifies which files require modification.</li>
+                  <li><strong>Coder Agent:</strong> Analyzes the issue context and files, writes a clean code fix block, and drafts a descriptive Pull Request description.</li>
+                  <li><strong>Reviewer Agent:</strong> Reviews the proposed code changes, provides feedback (strengths, issues, tips), assigns a quality score, and decides whether to approve.</li>
+                </ul>
+              </section>
+
+              <section className="docs-section">
+                <h3>🚀 2. Supported Formats</h3>
+                <p>You can input target issues in three convenient ways using the selector tabs:</p>
+                <div className="format-grid">
+                  <div className="format-card">
+                    <h4>Direct Issue URL</h4>
+                    <p>Paste a full issue link directly:</p>
+                    <code>https://github.com/owner/repo/issues/123</code>
+                  </div>
+                  <div className="format-card">
+                    <h4>Repository & Issue No.</h4>
+                    <p>Enter repository URL/path and issue number separately:</p>
+                    <code>github.com/owner/repo</code> + <code>123</code>
+                  </div>
+                  <div className="format-card">
+                    <h4>Manual Fields</h4>
+                    <p>Explicitly specify owner, repo, and issue number:</p>
+                    <code>owner</code>, <code>repo</code>, <code>123</code>
+                  </div>
+                </div>
+              </section>
+
+              <section className="docs-section">
+                <h3>💡 3. Quick Tips</h3>
+                <ul>
+                  <li><strong>Nested Folders:</strong> The agents are trained to traverse subdirectory structures (e.g. <code>public/Chronosphere/</code>) to find files even if they aren't in the root path.</li>
+                  <li><strong>Copy Code:</strong> Hover over the Code Fix block in the Coder tab to copy the generated patch directly to your clipboard.</li>
+                  <li><strong>API Endpoint:</strong> Ensure the FastAPI server is running on port <code>8001</code> (or customize the endpoint in <code>App.jsx</code>).</li>
+                </ul>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
