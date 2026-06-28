@@ -362,6 +362,218 @@ input::placeholder {
   font-family: 'Share Tech Mono', 'Courier New', Courier, monospace;
 }
 
+/* Custom styles for structured UI output cards */
+.split-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 768px) {
+  .split-layout {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
+
+.sub-card {
+  background: #0f0f0f;
+  border: 1px solid #1f1f1f;
+  border-radius: 12px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+.sub-card h3 {
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #ff6b00;
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.code-viewer-container {
+  background: #000000;
+  border: 1px solid #1f1f1f;
+  border-radius: 8px;
+  padding: 18px;
+  overflow: auto;
+  max-height: 380px;
+}
+
+.code-viewer-container pre {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.copy-btn {
+  background: #1f1f1f;
+  color: #888888;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-transform: uppercase;
+}
+
+.copy-btn:hover {
+  background: #ff6b00;
+  color: #ffffff;
+  border-color: #ff6b00;
+}
+
+.markdown-body {
+  font-size: 14px;
+  line-height: 1.7;
+  color: #cccccc;
+}
+
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 18px 0 10px 0;
+  color: #ffffff;
+}
+
+.markdown-body h1:first-child {
+  margin-top: 0;
+}
+
+.markdown-body ul {
+  padding-left: 20px;
+  margin-bottom: 12px;
+}
+
+.markdown-body li {
+  margin-bottom: 6px;
+}
+
+.file-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.file-timeline-item {
+  background: #151515;
+  border: 1px solid #222222;
+  padding: 10px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 8px;
+}
+
+.timeline-badge {
+  background: rgba(255, 107, 0, 0.15);
+  border: 1px dashed #ff6b00;
+  color: #ffaa00;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.reviewer-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+
+.score-gauge-card {
+  background: #0f0f0f;
+  border: 1px solid #1f1f1f;
+  border-radius: 12px;
+  padding: 30px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+
+.gauge-ring {
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  border: 4px solid #1a1a1a;
+  border-top-color: #ff6b00;
+  border-right-color: #ffaa00;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 15px;
+  box-shadow: 0 0 15px rgba(255, 107, 0, 0.2);
+  animation: spin-slow 10s linear infinite;
+}
+
+.gauge-ring-content {
+  animation: counter-spin 10s linear infinite;
+}
+
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+@keyframes counter-spin {
+  to { transform: rotate(-360deg); }
+}
+
+.score-val {
+  font-size: 32px;
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1;
+}
+
+.score-label {
+  font-size: 12px;
+  color: #888888;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.verdict-banner {
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 14px;
+  margin-top: 15px;
+}
+
+.verdict-banner.approve {
+  background: rgba(39, 174, 96, 0.1);
+  border: 1px solid #27ae60;
+  color: #2ec866;
+  box-shadow: 0 0 10px rgba(39, 174, 96, 0.15);
+}
+
+.verdict-banner.changes {
+  background: rgba(241, 196, 15, 0.1);
+  border: 1px solid #f1c40f;
+  color: #f39c12;
+  box-shadow: 0 0 10px rgba(241, 196, 15, 0.15);
+}
+
+.reviewer-text-card {
+  background: #0f0f0f;
+  border: 1px solid #1f1f1f;
+  border-radius: 12px;
+  padding: 24px;
+}
+
 /* Custom styles for structured outputs inside pre tags */
 .review-score-badge {
   display: inline-block;
