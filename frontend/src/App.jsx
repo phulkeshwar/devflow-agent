@@ -6,9 +6,14 @@ import "./App.css";
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 function App() {
+  // Input option tab state
+  const [inputOption, setInputOption] = useState("issue-url"); // "issue-url" | "repo-issue" | "manual"
+
   // Input fields state
-  const [owner, setOwner] = useState("");
-  const [repo, setRepo] = useState("");
+  const [directIssueUrl, setDirectIssueUrl] = useState("");
+  const [repoUrl, setRepoUrl] = useState("");
+  const [ownerName, setOwnerName] = useState("");
+  const [repoName, setRepoName] = useState("");
   const [issueNumber, setIssueNumber] = useState("");
 
   // Loading and result states
@@ -25,21 +30,117 @@ function App() {
     alert("Code copied to clipboard!");
   };
 
+  // Helper to parse repo URL, path, or full issue link into owner, repo name, and issue number
+  const parseGitHubInput = (input) => {
+    let url = input.trim();
+    // Remove trailing slashes
+    url = url.replace(/\/+$/, "");
+    
+    let owner = "";
+    let repo = "";
+    let issueNo = "";
+
+    // Check if it is a full issue link: e.g., https://github.com/owner/repo/issues/num
+    const issueMatch = url.match(/github\.com\/([^\/]+)\/([^\/]+)\/issues\/(\d+)/i);
+    if (issueMatch) {
+      owner = issueMatch[1];
+      repo = issueMatch[2];
+      issueNo = issueMatch[3];
+      return { owner, repo, issueNumber: issueNo };
+    }
+    
+    // Check if it starts with http/https
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+      try {
+        const urlObj = new URL(url);
+        if (urlObj.hostname === "github.com" || urlObj.hostname === "www.github.com") {
+          const parts = urlObj.pathname.split("/").filter(Boolean);
+          if (parts.length >= 2) {
+            owner = parts[0];
+            repo = parts[1];
+          }
+        }
+      } catch (e) {
+        // ignore and fallback
+      }
+    } else {
+      // Fallback: split by slash (e.g. owner/repo or github.com/owner/repo)
+      const parts = url.split("/").filter(Boolean);
+      if (parts.length >= 2) {
+        const githubIndex = parts.indexOf("github.com");
+        if (githubIndex !== -1 && parts.length > githubIndex + 2) {
+          owner = githubIndex + 1 < parts.length ? parts[githubIndex + 1] : "";
+          repo = githubIndex + 2 < parts.length ? parts[githubIndex + 2] : "";
+        } else {
+          owner = parts[parts.length - 2];
+          repo = parts[parts.length - 1];
+        }
+      }
+    }
+    
+    return { owner, repo, issueNumber: "" };
+  };
+
+  // Event handler for repository input changes to trigger auto-fill
+  const handleUrlChange = (val) => {
+    setRepoUrl(val);
+    const parsed = parseGitHubInput(val);
+    if (parsed.issueNumber) {
+      setIssueNumber(parsed.issueNumber);
+    }
+  };
+
   // Triggers the uvicorn multi-agent pipeline
   const handleAnalyse = async () => {
-    if (!owner || !repo || !issueNumber) {
-      setError("Please fill in all input fields.");
-      return;
+    let owner = "";
+    let repo = "";
+    let issueNum = "";
+
+    if (inputOption === "issue-url") {
+      if (!directIssueUrl) {
+        setError("Please enter the GitHub Issue URL.");
+        return;
+      }
+      const parsed = parseGitHubInput(directIssueUrl);
+      if (!parsed.owner || !parsed.repo || !parsed.issueNumber) {
+        setError("Could not parse the issue URL. Ensure it follows the format: https://github.com/owner/repo/issues/123");
+        return;
+      }
+      owner = parsed.owner;
+      repo = parsed.repo;
+      issueNum = parsed.issueNumber;
+    } else if (inputOption === "repo-issue") {
+      if (!repoUrl || !issueNumber) {
+        setError("Please fill in all input fields.");
+        return;
+      }
+      const parsed = parseGitHubInput(repoUrl);
+      if (!parsed.owner || !parsed.repo) {
+        setError("Could not parse the repository owner and name from the URL or path.");
+        return;
+      }
+      owner = parsed.owner;
+      repo = parsed.repo;
+      issueNum = issueNumber;
+    } else if (inputOption === "manual") {
+      if (!ownerName || !repoName || !issueNumber) {
+        setError("Please fill in all input fields.");
+        return;
+      }
+      owner = ownerName.trim();
+      repo = repoName.trim();
+      issueNum = issueNumber;
     }
+
     setError("");
     setResult(null);
     setLoading(true);
 
     try {
       const res = await axios.post(`${API}/analyse`, {
-        owner: owner.trim(),
-        repo: repo.trim(),
-        issue_number: parseInt(issueNumber),
+        owner,
+        repo,
+        issue_number: parseInt(issueNum),
       });
 
       if (res.data && res.data.success) {
@@ -152,32 +253,90 @@ function App() {
         </div>
 
         <div className="input-card">
+          <div className="input-options-selector">
+            <button
+              className={`option-tab ${inputOption === "issue-url" ? "active" : ""}`}
+              onClick={() => setInputOption("issue-url")}
+            >
+              🔗 Direct Issue URL
+            </button>
+            <button
+              className={`option-tab ${inputOption === "repo-issue" ? "active" : ""}`}
+              onClick={() => setInputOption("repo-issue")}
+            >
+              📂 Repo Link + Issue #
+            </button>
+            <button
+              className={`option-tab ${inputOption === "manual" ? "active" : ""}`}
+              onClick={() => setInputOption("manual")}
+            >
+              ✍️ Manual Owner/Repo
+            </button>
+          </div>
+
           <div className="input-row">
-            <div className="input-group">
-              <label>Repository Owner</label>
-              <input
-                placeholder="e.g. facebook"
-                value={owner}
-                onChange={(e) => setOwner(e.target.value)}
-              />
-            </div>
-            <div className="input-group">
-              <label>Repository Name</label>
-              <input
-                placeholder="e.g. react"
-                value={repo}
-                onChange={(e) => setRepo(e.target.value)}
-              />
-            </div>
-            <div className="input-group small">
-              <label>Issue #</label>
-              <input
-                placeholder="e.g. 1"
-                value={issueNumber}
-                onChange={(e) => setIssueNumber(e.target.value)}
-                type="number"
-              />
-            </div>
+            {inputOption === "issue-url" && (
+              <div className="input-group">
+                <label>GitHub Issue Link</label>
+                <input
+                  placeholder="e.g. https://github.com/facebook/react/issues/12345"
+                  value={directIssueUrl}
+                  onChange={(e) => setDirectIssueUrl(e.target.value)}
+                />
+              </div>
+            )}
+
+            {inputOption === "repo-issue" && (
+              <>
+                <div className="input-group">
+                  <label>GitHub Repository Link or Path</label>
+                  <input
+                    placeholder="e.g. https://github.com/facebook/react or facebook/react"
+                    value={repoUrl}
+                    onChange={(e) => handleUrlChange(e.target.value)}
+                  />
+                </div>
+                <div className="input-group small">
+                  <label>Issue #</label>
+                  <input
+                    placeholder="e.g. 1"
+                    value={issueNumber}
+                    onChange={(e) => setIssueNumber(e.target.value)}
+                    type="number"
+                  />
+                </div>
+              </>
+            )}
+
+            {inputOption === "manual" && (
+              <>
+                <div className="input-group">
+                  <label>Repository Owner</label>
+                  <input
+                    placeholder="e.g. facebook"
+                    value={ownerName}
+                    onChange={(e) => setOwnerName(e.target.value)}
+                  />
+                </div>
+                <div className="input-group">
+                  <label>Repository Name</label>
+                  <input
+                    placeholder="e.g. react"
+                    value={repoName}
+                    onChange={(e) => setRepoName(e.target.value)}
+                  />
+                </div>
+                <div className="input-group small">
+                  <label>Issue #</label>
+                  <input
+                    placeholder="e.g. 1"
+                    value={issueNumber}
+                    onChange={(e) => setIssueNumber(e.target.value)}
+                    type="number"
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           {error && (

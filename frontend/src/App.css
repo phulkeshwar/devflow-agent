@@ -611,3 +611,50 @@ input::placeholder {
   0% { filter: drop-shadow(0 0 2px rgba(255,107,0,0.3)); }
   100% { filter: drop-shadow(0 0 8px rgba(255,107,0,0.8)); }
 }
+
+/* Input Options Tab Selector - Vercel Segmented Control Style */
+.input-options-selector {
+  display: flex;
+  background: #111111;
+  border: 1px solid #1f1f1f;
+  padding: 4px;
+  border-radius: 8px;
+  gap: 4px;
+  margin-bottom: 24px;
+  width: fit-content;
+}
+
+.option-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 8px 16px;
+  color: #888888;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: inherit;
+}
+
+.option-tab:hover {
+  color: #ffffff;
+}
+
+.option-tab.active {
+  background: #1f1f1f;
+  color: #ff6b00;
+  border-color: rgba(255, 107, 0, 0.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+@media (max-width: 600px) {
+  .input-options-selector {
+    width: 100%;
+    flex-direction: column;
+  }
+  .option-tab {
+    text-align: left;
+    width: 100%;
+  }
+}
