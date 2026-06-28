@@ -26,13 +26,21 @@ def fetch_github_issue(owner: str, repo: str, issue_number: int) -> dict:
         "url": data.get("html_url")
     }
 
-def fetch_repo_files(owner: str, repo: str) -> list:
-    """Lists top-level files in a GitHub repo."""
-    url = f"https://api.github.com/repos/{owner}/{repo}/contents"
+def fetch_repo_files(owner: str, repo: str, path: str = "") -> list:
+    """Lists files and directories in a GitHub repository path. Use path parameter to navigate into directories."""
+    clean_path = path.strip("/")
+    url = f"https://api.github.com/repos/{owner}/{repo}/contents/{clean_path}".rstrip("/")
     response = requests.get(url, headers=HEADERS)
     if response.status_code != 200:
         return []
-    return [f["name"] for f in response.json() if f["type"] == "file"]
+    
+    items = []
+    for item in response.json():
+        if item["type"] == "dir":
+            items.append(f"[DIR] {item['name']}")
+        else:
+            items.append(item["name"])
+    return items
 
 def fetch_file_content(owner: str, repo: str, filepath: str) -> str:
     """Fetches raw content of a specific file from GitHub repo."""

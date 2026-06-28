@@ -18,9 +18,9 @@ from agents import run_devflow_pipeline
 
 def run_pipeline_test():
     print("--- Starting Multi-Agent Pipeline Test ---")
-    owner = "octocat"
-    repo = "Spoon-Knife"
-    issue_number = 1
+    owner = "dhairyagothi"
+    repo = "100_days_100_web_project"
+    issue_number = 9834
     
     print(f"Triggering pipeline for {owner}/{repo} #{issue_number}...")
     try:

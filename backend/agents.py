@@ -16,7 +16,7 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from tools import fetch_github_issue, fetch_repo_files, fetch_file_content
 
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-flash-lite-latest"
 
 # ── Agent 1: Reader Agent ──────────────────────────────────────────
 reader_agent = Agent(
@@ -26,10 +26,10 @@ reader_agent = Agent(
     instruction="""
     You are a senior developer who analyses GitHub issues.
     When given an owner, repo, and issue number:
-    1. Fetch the issue details using fetch_github_issue
-    2. List the repo files using fetch_repo_files
-    3. Identify which files are most likely related to the issue
-    4. Return a structured summary: issue title, description, labels, and relevant files
+    1. Fetch the issue details using fetch_github_issue.
+    2. Check the repo structure. Since files can be in subdirectories (like folders prefixed with [DIR] in fetch_repo_files results), navigate into relevant folders by calling fetch_repo_files with the `path` parameter (e.g. `Day-40/Chronos+`).
+    3. Identify which specific files are most likely related to the issue.
+    4. Return a structured summary: issue title, description, labels, and relevant files (including their full paths, e.g., Day-40/Chronos+/index.html).
     Be concise and precise.
     """,
     tools=[fetch_github_issue, fetch_repo_files]
