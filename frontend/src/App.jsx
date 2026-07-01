@@ -712,7 +712,7 @@ function App() {
                         Upload File
                         <input type="file" onChange={handleFileUpload} style={{ display: "none" }} />
                       </label>
-                      <span className="dropzone-tip">Supports JS, TS, Python, CSS, HTML</span>
+                      <span className="dropzone-tip">Supports all languages and frameworks</span>
                     </div>
                   </div>
                 </div>
