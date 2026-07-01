@@ -28,9 +28,9 @@ def root():
     return {"status": "DevFlow Agent is running"}
 
 @app.post("/analyse")
-def analyse_issue(req: IssueRequest):
+async def analyse_issue(req: IssueRequest):
     try:
-        result = run_devflow_pipeline(
+        result = await run_devflow_pipeline(
             owner=req.owner,
             repo=req.repo,
             issue_number=req.issue_number
@@ -40,9 +40,9 @@ def analyse_issue(req: IssueRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/orchestrate")
-def orchestrate_query(req: OrchestrateRequest):
+async def orchestrate_query(req: OrchestrateRequest):
     try:
-        result = run_orchestrated_pipeline(
+        result = await run_orchestrated_pipeline(
             query=req.query,
             target_agent=req.agent
         )

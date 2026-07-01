@@ -1,4 +1,5 @@
 import os
+import asyncio
 import uuid
 import json
 from dotenv import load_dotenv
@@ -157,35 +158,50 @@ coder_agent = Agent(
 session_service = InMemorySessionService()
 APP_NAME = "devflow_agent"
 
-def run_agent(agent: Agent, user_message: str, session_id: str) -> str:
-    """Runs a single agent and returns its text response."""
-    runner = Runner(
-        agent=agent,
-        app_name=APP_NAME,
-        session_service=session_service
-    )
-    session_service.create_session_sync(
-        app_name=APP_NAME,
-        user_id="user_1",
-        session_id=session_id
-    )
-    content = types.Content(
-        role="user",
-        parts=[types.Part(text=user_message)]
-    )
-    final_response = ""
-    for event in runner.run(
-        user_id="user_1",
-        session_id=session_id,
-        new_message=content
-    ):
-        if getattr(event, "content", None) and event.content.parts:
-            for part in event.content.parts:
-                if hasattr(part, "text") and part.text:
-                    final_response += part.text
-    return final_response
+async def run_agent(agent: Agent, user_message: str, session_id: str) -> str:
+    """Runs a single agent asynchronously and returns its text response, retrying on rate limits/server errors."""
+    max_retries = 3
+    delay = 4.0  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            runner = Runner(
+                agent=agent,
+                app_name=APP_NAME,
+                session_service=session_service
+            )
+            session_service.create_session_sync(
+                app_name=APP_NAME,
+                user_id="user_1",
+                session_id=session_id
+            )
+            content = types.Content(
+                role="user",
+                parts=[types.Part(text=user_message)]
+            )
+            final_response = ""
+            async for event in runner.run_async(
+                user_id="user_1",
+                session_id=session_id,
+                new_message=content
+            ):
+                if getattr(event, "content", None) and event.content.parts:
+                    for part in event.content.parts:
+                        if hasattr(part, "text") and part.text:
+                            final_response += part.text
+            return final_response
+        except Exception as e:
+            error_msg = str(e)
+            is_retryable = any(code in error_msg for code in ["429", "503", "RESOURCE_EXHAUSTED", "UNAVAILABLE"])
+            
+            if is_retryable and attempt < max_retries - 1:
+                print(f"[Retry] Temp error on agent '{agent.name}' (attempt {attempt + 1}/{max_retries}): {error_msg}. Retrying in {delay}s...")
+                await asyncio.sleep(delay)
+                delay *= 2.0
+            else:
+                raise e
 
-def run_orchestrated_pipeline(query: str, target_agent: str = None) -> dict:
+async def run_orchestrated_pipeline(query: str, target_agent: str = None) -> dict:
     """
     Main entry point for DevFlow Productivity Suite.
     If target_agent is specified, skips the Orchestrator and calls the specialist directly.
@@ -195,17 +211,17 @@ def run_orchestrated_pipeline(query: str, target_agent: str = None) -> dict:
     
     # 1. Direct agent routing if specified
     if target_agent in ["code_review", "reviewer"]:
-        output = run_agent(reviewer_agent, query, sid + "-reviewer")
+        output = await run_agent(reviewer_agent, query, sid + "-reviewer")
         return {"route": "code_review", "explanation": "Directly requested by user", "output": output}
     elif target_agent in ["task_planning", "planner"]:
-        output = run_agent(planner_agent, query, sid + "-planner")
+        output = await run_agent(planner_agent, query, sid + "-planner")
         return {"route": "task_planning", "explanation": "Directly requested by user", "output": output}
     elif target_agent in ["documentation", "doc"]:
-        output = run_agent(documentation_agent, query, sid + "-doc")
+        output = await run_agent(documentation_agent, query, sid + "-doc")
         return {"route": "documentation", "explanation": "Directly requested by user", "output": output}
 
     # 2. Otherwise route through Orchestrator
-    orchestrator_output = run_agent(orchestrator_agent, query, sid + "-orchestrator")
+    orchestrator_output = await run_agent(orchestrator_agent, query, sid + "-orchestrator")
     
     # Parse orchestrator classification block
     route = "general"
@@ -224,11 +240,11 @@ def run_orchestrated_pipeline(query: str, target_agent: str = None) -> dict:
         
     # Execute routed specialist
     if route == "code_review":
-        output = run_agent(reviewer_agent, query, sid + "-reviewer")
+        output = await run_agent(reviewer_agent, query, sid + "-reviewer")
     elif route == "task_planning":
-        output = run_agent(planner_agent, query, sid + "-planner")
+        output = await run_agent(planner_agent, query, sid + "-planner")
     elif route == "documentation":
-        output = run_agent(documentation_agent, query, sid + "-doc")
+        output = await run_agent(documentation_agent, query, sid + "-doc")
     else:
         # General route - returns orchestrator output (removing classification block)
         output = orchestrator_output
@@ -241,21 +257,21 @@ def run_orchestrated_pipeline(query: str, target_agent: str = None) -> dict:
         "output": output
     }
 
-def run_devflow_pipeline(owner: str, repo: str, issue_number: int) -> dict:
-    """Runs the full 3-agent pipeline and returns all results."""
+async def run_devflow_pipeline(owner: str, repo: str, issue_number: int) -> dict:
+    """Runs the full 3-agent pipeline asynchronously and returns all results."""
     sid = str(uuid.uuid4())
 
     # Step 1: Reader Agent
     reader_prompt = f"Analyze issue #{issue_number} in repository {owner}/{repo}"
-    reader_output = run_agent(reader_agent, reader_prompt, sid + "-reader")
+    reader_output = await run_agent(reader_agent, reader_prompt, sid + "-reader")
 
     # Step 2: Coder Agent
     coder_prompt = f"Based on this issue analysis:\n{reader_output}\nGenerate a code fix for repository {owner}/{repo}."
-    coder_output = run_agent(coder_agent, coder_prompt, sid + "-coder")
+    coder_output = await run_agent(coder_agent, coder_prompt, sid + "-coder")
 
     # Step 3: Reviewer Agent
     reviewer_prompt = f"Review this code fix:\n{coder_output}"
-    reviewer_output = run_agent(reviewer_agent, reviewer_prompt, sid + "-reviewer")
+    reviewer_output = await run_agent(reviewer_agent, reviewer_prompt, sid + "-reviewer")
 
     return {
         "reader": reader_output,

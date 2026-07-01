@@ -44,10 +44,24 @@ def fetch_repo_files(owner: str, repo: str, path: str = "") -> list:
 
 def fetch_file_content(owner: str, repo: str, filepath: str) -> str:
     """Fetches raw content of a specific file from GitHub repo."""
-    url = f"https://api.github.com/repos/{owner}/{repo}/contents/{filepath}"
+    if not filepath or not isinstance(filepath, str):
+        return "Invalid filepath provided."
+    clean_path = filepath.strip("/")
+    url = f"https://api.github.com/repos/{owner}/{repo}/contents/{clean_path}"
     response = requests.get(url, headers=HEADERS)
     if response.status_code != 200:
         return f"Could not fetch file: {response.status_code}"
+    
+    data = response.json()
+    if isinstance(data, list):
+        return "The path specified is a directory, not a file. Here are the contents:\n" + ", ".join([item.get("name", "") for item in data])
+        
+    if not isinstance(data, dict):
+        return "Unexpected response format from GitHub."
+        
     import base64
-    content = response.json().get("content", "")
-    return base64.b64decode(content).decode("utf-8", errors="ignore")
+    content = data.get("content", "")
+    try:
+        return base64.b64decode(content).decode("utf-8", errors="ignore")
+    except Exception as e:
+        return f"Failed to decode file content: {str(e)}"
