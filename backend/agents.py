@@ -1,4 +1,6 @@
 import os
+import uuid
+import json
 from dotenv import load_dotenv
 load_dotenv(override=True)
 
@@ -18,63 +20,117 @@ from tools import fetch_github_issue, fetch_repo_files, fetch_file_content
 
 GEMINI_MODEL = "gemini-flash-lite-latest"
 
-# ── Agent 1: Reader Agent ──────────────────────────────────────────
+# ── Agent 1: Orchestrator Agent (The Router) ───────────────────────
+orchestrator_agent = Agent(
+    name="orchestrator_agent",
+    model=GEMINI_MODEL,
+    description="Analyzes the developer query and routes it to the correct specialist agent.",
+    instruction="""
+    You are the DevFlow Orchestrator Agent. Your task is to analyze the user's request and classify it into one of four categories:
+    1. `code_review`: The user wants to review code, find bugs, analyze security smells, or refactor snippets.
+    2. `task_planning`: The user wants to plan tasks, break down requirements, design a feature, or create checklists.
+    3. `documentation`: The user wants to write/generate a README, generate docstrings, create API documentation, or explain code.
+    4. `general`: The user is asking a general question, coding concept, or chit-chat that doesn't fit the specialists.
+
+    Format your classification exactly like this:
+    --- CLASSIFICATION ---
+    Type: [code_review | task_planning | documentation | general]
+    Explanation: <Brief reason why this category was chosen>
+    --- END ---
+
+    If the category is `general`, immediately write your comprehensive answer to the user right below the classification block.
+    If the category is anything else, write ONLY the classification block and nothing else.
+    """
+)
+
+# ── Agent 2: Code Review Agent ─────────────────────────────────────
+reviewer_agent = Agent(
+    name="reviewer_agent",
+    model=GEMINI_MODEL,
+    description="Reviews code snippets, checks smells, and suggests refactoring.",
+    instruction="""
+    You are a senior code reviewer. Analyze the code snippet, file, or git diff provided by the user.
+    Identify:
+    - Potential bugs, logic errors, and edge cases.
+    - Code smells, complexity, and performance bottlenecks.
+    - Security vulnerabilities.
+    - Recommendations for clean-code refactoring.
+
+    Format your review output exactly like this:
+    --- REVIEW ---
+    Score: X/10
+    Strengths:
+    - <Point 1>
+    - <Point 2>
+    Issues:
+    - <Point 1>
+    - <Point 2>
+    Recommendation: [APPROVE / REQUEST CHANGES]
+
+    --- CODE FIX ---
+    Provide the refactored, optimized version of the user's code here. Wrap it in a single markdown code block with the appropriate syntax highlighting.
+    """
+)
+
+# ── Agent 3: Task Planner Agent ────────────────────────────────────
+planner_agent = Agent(
+    name="planner_agent",
+    model=GEMINI_MODEL,
+    description="Takes feature requirements and breaks them down into task lists.",
+    instruction="""
+    You are an expert product manager and technical lead.
+    Take the feature description or project requirements provided by the user and break them down into sprint-ready, structured subtasks.
+    Each task must have:
+    - A clear, actionable description.
+    - A priority level (High, Medium, Low).
+    - An effort estimation (e.g. 2h, 4h, 1d).
+    - Dependencies (None, or the number of another task in the list).
+
+    Format your task plan exactly like this:
+    --- TASK LIST ---
+    - [ ] Task 1: <Description> | Priority: <High/Medium/Low> | Estimate: <time> | Dependencies: <dependencies>
+    - [ ] Task 2: <Description> | Priority: <High/Medium/Low> | Estimate: <time> | Dependencies: <dependencies>
+    
+    Add a brief summary of dependencies or design tips below the list if helpful.
+    """
+)
+
+# ── Agent 4: Documentation Agent ───────────────────────────────────
+documentation_agent = Agent(
+    name="documentation_agent",
+    model=GEMINI_MODEL,
+    description="Generates READMEs, JSDoc/docstrings, and explanations for source code.",
+    instruction="""
+    You are a technical documentation specialist.
+    Generate clear, detailed developer documentation based on the source code, function signatures, or design request provided.
+    This could include:
+    - JSDoc or docstrings (Google, Sphinx, or Docstring format).
+    - A structured README.md section explaining installation, setup, and usage.
+    - Detailed API endpoints specifications.
+
+    Format your documentation output exactly like this:
+    --- DOCUMENTATION ---
+    ### Document Type: [README / Docstrings / API Specification / Code Explanation]
+    
+    <Write the complete formatted documentation content in clean markdown here. Use markdown blocks for any code examples.>
+    """
+)
+
+# ── Reader / Coder Agents (Legacy/Backwards-compatible) ─────────────
 reader_agent = Agent(
     name="reader_agent",
     model=GEMINI_MODEL,
     description="Reads a GitHub issue and identifies relevant files.",
-    instruction="""
-    You are a senior developer who analyses GitHub issues.
-    When given an owner, repo, and issue number:
-    1. Fetch the issue details using fetch_github_issue.
-    2. Check the repo structure. Since files can be in subdirectories (like folders prefixed with [DIR] in fetch_repo_files results), navigate into relevant folders by calling fetch_repo_files with the `path` parameter (e.g. `Day-40/Chronos+`).
-    3. Identify which specific files are most likely related to the issue.
-    4. Return a structured summary: issue title, description, labels, and relevant files (including their full paths, e.g., Day-40/Chronos+/index.html).
-    Be concise and precise.
-    """,
+    instruction="You are an issue reader agent.",
     tools=[fetch_github_issue, fetch_repo_files]
 )
 
-# ── Agent 2: Coder Agent ───────────────────────────────────────────
 coder_agent = Agent(
     name="coder_agent",
     model=GEMINI_MODEL,
-    description="Generates a code fix based on the issue analysis.",
-    instruction="""
-    You are an expert software engineer.
-    When given an issue summary and relevant file names:
-    1. If a relevant file is provided, fetch its content using fetch_file_content
-    2. Analyse the issue carefully
-    3. Write a clean, working code fix
-    4. Write a clear PR description explaining what you changed and why
-    Format your response as:
-    --- CODE FIX ---
-    <the actual code>
-    --- PR DESCRIPTION ---
-    <title and description for the pull request>
-    """,
+    description="Generates a code fix.",
+    instruction="You are a code fix agent.",
     tools=[fetch_file_content]
-)
-
-# ── Agent 3: Reviewer Agent ────────────────────────────────────────
-reviewer_agent = Agent(
-    name="reviewer_agent",
-    model=GEMINI_MODEL,
-    description="Reviews the generated code fix and scores its quality.",
-    instruction="""
-    You are a strict but fair code reviewer.
-    When given a code fix:
-    1. Check for bugs, edge cases, security issues
-    2. Check code quality and readability
-    3. Score the fix out of 10
-    4. List what's good and what needs improvement
-    Format your response as:
-    --- REVIEW ---
-    Score: X/10
-    Strengths: ...
-    Issues: ...
-    Recommendation: APPROVE / REQUEST CHANGES
-    """
 )
 
 # ── Session + Runner setup ─────────────────────────────────────────
@@ -109,37 +165,70 @@ def run_agent(agent: Agent, user_message: str, session_id: str) -> str:
                     final_response += part.text
     return final_response
 
-def run_devflow_pipeline(owner: str, repo: str, issue_number: int) -> dict:
-    """Runs the full 3-agent pipeline and returns all results."""
-    import uuid
+def run_orchestrated_pipeline(query: str, target_agent: str = None) -> dict:
+    """
+    Main entry point for DevFlow Productivity Suite.
+    If target_agent is specified, skips the Orchestrator and calls the specialist directly.
+    Otherwise, routes through the Orchestrator.
+    """
     sid = str(uuid.uuid4())
+    
+    # 1. Direct agent routing if specified
+    if target_agent in ["code_review", "reviewer"]:
+        output = run_agent(reviewer_agent, query, sid + "-reviewer")
+        return {"route": "code_review", "explanation": "Directly requested by user", "output": output}
+    elif target_agent in ["task_planning", "planner"]:
+        output = run_agent(planner_agent, query, sid + "-planner")
+        return {"route": "task_planning", "explanation": "Directly requested by user", "output": output}
+    elif target_agent in ["documentation", "doc"]:
+        output = run_agent(documentation_agent, query, sid + "-doc")
+        return {"route": "documentation", "explanation": "Directly requested by user", "output": output}
 
-    # Step 1: Reader Agent
-    reader_prompt = f"""
-    Analyse this GitHub issue:
-    Owner: {owner}
-    Repo: {repo}
-    Issue Number: {issue_number}
-    """
-    reader_output = run_agent(reader_agent, reader_prompt, sid + "-reader")
-
-    # Step 2: Coder Agent
-    coder_prompt = f"""
-    Based on this issue analysis, generate a code fix:
-    {reader_output}
-    Owner: {owner}, Repo: {repo}
-    """
-    coder_output = run_agent(coder_agent, coder_prompt, sid + "-coder")
-
-    # Step 3: Reviewer Agent
-    reviewer_prompt = f"""
-    Review this code fix:
-    {coder_output}
-    """
-    reviewer_output = run_agent(reviewer_agent, reviewer_prompt, sid + "-reviewer")
+    # 2. Otherwise route through Orchestrator
+    orchestrator_output = run_agent(orchestrator_agent, query, sid + "-orchestrator")
+    
+    # Parse orchestrator classification block
+    route = "general"
+    explanation = "Routed by Orchestrator"
+    
+    try:
+        if "--- CLASSIFICATION ---" in orchestrator_output:
+            lines = orchestrator_output.split("\n")
+            for line in lines:
+                if line.startswith("Type:"):
+                    route = line.replace("Type:", "").strip()
+                elif line.startswith("Explanation:"):
+                    explanation = line.replace("Explanation:", "").strip()
+    except Exception:
+        pass
+        
+    # Execute routed specialist
+    if route == "code_review":
+        output = run_agent(reviewer_agent, query, sid + "-reviewer")
+    elif route == "task_planning":
+        output = run_agent(planner_agent, query, sid + "-planner")
+    elif route == "documentation":
+        output = run_agent(documentation_agent, query, sid + "-doc")
+    else:
+        # General route - returns orchestrator output (removing classification block)
+        output = orchestrator_output
+        if "--- END ---" in output:
+            output = output.split("--- END ---")[1].strip()
 
     return {
-        "reader": reader_output,
-        "coder": coder_output,
-        "reviewer": reviewer_output
+        "route": route,
+        "explanation": explanation,
+        "output": output
+    }
+
+def run_devflow_pipeline(owner: str, repo: str, issue_number: int) -> dict:
+    """Legacy GitHub issue pipeline compatibility wrapper."""
+    # We maintain this so old routes or checks don't break
+    issue = fetch_github_issue(owner, repo, issue_number)
+    query = f"Review this issue and plan a fix:\nIssue Title: {issue.get('title')}\nDescription: {issue.get('body')}"
+    res = run_orchestrated_pipeline(query, target_agent="reviewer")
+    return {
+        "reader": f"Issue: {issue.get('title')}\n{issue.get('body')}",
+        "coder": res.get("output"),
+        "reviewer": res.get("output")
     }

@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from agents import run_devflow_pipeline
+from agents import run_devflow_pipeline, run_orchestrated_pipeline
 
 app = FastAPI(title="DevFlow Agent API")
 
@@ -18,6 +18,10 @@ class IssueRequest(BaseModel):
     repo: str
     issue_number: int
 
+class OrchestrateRequest(BaseModel):
+    query: str
+    agent: str = None
+
 @app.get("/")
 def root():
     return {"status": "DevFlow Agent is running"}
@@ -31,5 +35,16 @@ def analyse_issue(req: IssueRequest):
             issue_number=req.issue_number
         )
         return {"success": True, "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/orchestrate")
+def orchestrate_query(req: OrchestrateRequest):
+    try:
+        result = run_orchestrated_pipeline(
+            query=req.query,
+            target_agent=req.agent
+        )
+        return {"success": True, **result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

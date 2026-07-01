@@ -6,10 +6,16 @@ import "./App.css";
 const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8001";
 
 function App() {
-  // Input option tab state
-  const [inputOption, setInputOption] = useState("issue-url"); // "issue-url" | "repo-issue" | "manual"
+  // Developer Workspace / DevFlow Suite states
+  const [workspaceMode, setWorkspaceMode] = useState("orchestrator"); // "orchestrator" | "code_review" | "task_planning" | "documentation" | "github_issue"
+  const [userQuery, setUserQuery] = useState("");
+  const [editorCode, setEditorCode] = useState("");
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [orchestrateRes, setOrchestrateRes] = useState(null);
+  const [kanbanTasks, setKanbanTasks] = useState([]);
 
-  // Input fields state
+  // Legacy Input option states for Github Issue flow
+  const [inputOption, setInputOption] = useState("issue-url");
   const [directIssueUrl, setDirectIssueUrl] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
   const [ownerName, setOwnerName] = useState("");
@@ -20,8 +26,6 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
-  
-  // Tab state: "reader", "coder", or "reviewer"
   const [activeTab, setActiveTab] = useState("reader");
   const [showDocs, setShowDocs] = useState(false);
 
@@ -34,14 +38,11 @@ function App() {
   // Helper to parse repo URL, path, or full issue link into owner, repo name, and issue number
   const parseGitHubInput = (input) => {
     let url = input.trim();
-    // Remove trailing slashes
     url = url.replace(/\/+$/, "");
-    
     let owner = "";
     let repo = "";
     let issueNo = "";
 
-    // Check if it is a full issue link: e.g., https://github.com/owner/repo/issues/num
     const issueMatch = url.match(/github\.com\/([^\/]+)\/([^\/]+)\/issues\/(\d+)/i);
     if (issueMatch) {
       owner = issueMatch[1];
@@ -50,7 +51,6 @@ function App() {
       return { owner, repo, issueNumber: issueNo };
     }
     
-    // Check if it starts with http/https
     if (url.startsWith("http://") || url.startsWith("https://")) {
       try {
         const urlObj = new URL(url);
@@ -65,7 +65,6 @@ function App() {
         // ignore and fallback
       }
     } else {
-      // Fallback: split by slash (e.g. owner/repo or github.com/owner/repo)
       const parts = url.split("/").filter(Boolean);
       if (parts.length >= 2) {
         const githubIndex = parts.indexOf("github.com");
@@ -78,11 +77,9 @@ function App() {
         }
       }
     }
-    
     return { owner, repo, issueNumber: "" };
   };
 
-  // Event handler for repository input changes to trigger auto-fill
   const handleUrlChange = (val) => {
     setRepoUrl(val);
     const parsed = parseGitHubInput(val);
@@ -91,7 +88,81 @@ function App() {
     }
   };
 
-  // Triggers the uvicorn multi-agent pipeline
+  // ── Drag and Drop / File uploader handlers ───────────────────────
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploadedFile(file);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setEditorCode(event.target.result);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleFileDrop = (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    setUploadedFile(file);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setEditorCode(event.target.result);
+    };
+    reader.readAsText(file);
+  };
+
+  // ── API request handler for general DevFlow pipeline ──────────────
+  const handleOrchestrate = async () => {
+    if (!userQuery.trim() && !editorCode.trim()) {
+      setError("Please write a prompt or paste some code.");
+      return;
+    }
+
+    setError("");
+    setOrchestrateRes(null);
+    setResult(null);
+    setLoading(true);
+
+    try {
+      let fullQuery = userQuery;
+      if (editorCode) {
+        fullQuery = `${userQuery}\n\n[Code Context${uploadedFile ? ` from ${uploadedFile.name}` : ""}]\n\`\`\`\n${editorCode}\n\`\`\``;
+      }
+
+      let agentParam = null;
+      if (workspaceMode === "code_review") agentParam = "code_review";
+      else if (workspaceMode === "task_planning") agentParam = "task_planning";
+      else if (workspaceMode === "documentation") agentParam = "documentation";
+
+      const res = await axios.post(`${API}/orchestrate`, {
+        query: fullQuery,
+        agent: agentParam
+      });
+
+      if (res.data && res.data.success) {
+        setOrchestrateRes({
+          route: res.data.route,
+          explanation: res.data.explanation,
+          output: res.data.output
+        });
+
+        if (res.data.route === "task_planning") {
+          const tasks = parseTaskPlannerOutput(res.data.output);
+          setKanbanTasks(tasks);
+        }
+      } else {
+        setError("Pipeline run completed, but returned unsuccessful status.");
+      }
+    } catch (err) {
+      console.error(err);
+      setError(err.response?.data?.detail || "Could not connect to the backend server. Make sure FastAPI is running.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Legacy API request handler for GitHub issue flow ──────────────
   const handleAnalyse = async () => {
     let owner = "";
     let repo = "";
@@ -134,6 +205,7 @@ function App() {
     }
 
     setError("");
+    setOrchestrateRes(null);
     setResult(null);
     setLoading(true);
 
@@ -146,7 +218,7 @@ function App() {
 
       if (res.data && res.data.success) {
         setResult(res.data.result);
-        setActiveTab("reader"); // Open the first tab (Reader) when done
+        setActiveTab("reader");
       } else {
         setError("Pipeline run completed, but returned unsuccessful status.");
       }
@@ -159,17 +231,12 @@ function App() {
   };
 
   // ── Parsers for rendering outputs beautifully ───────────────────
-
-  // Coder parser: splits code fix blocks and PR descriptions
   const parseCoderOutput = (output) => {
     if (!output) return { code: "", description: "" };
-    
-    // Split on standard headers
     const codeFixIndex = output.indexOf("--- CODE FIX ---");
     const prDescriptionIndex = output.indexOf("--- PR DESCRIPTION ---");
-    
     let code = "";
-    let description = output; // fallback
+    let description = output;
 
     if (codeFixIndex !== -1 && prDescriptionIndex !== -1) {
       if (codeFixIndex < prDescriptionIndex) {
@@ -180,21 +247,22 @@ function App() {
         code = output.slice(codeFixIndex + 16).trim();
       }
     }
-    
-    // Clean up code block markup (e.g. ```html, ```css) if present
     code = code.replace(/^```[a-zA-Z]*\n/, "").replace(/\n```$/, "");
-
     return { code, description };
   };
 
-  // Reviewer parser: parses score, verdict, and lists
   const parseReviewerOutput = (output) => {
-    if (!output) return { score: "", verdict: "", content: "" };
-
-    // Clean prefix header if present
+    if (!output) return { score: "", verdict: "", content: "", codeFix: "" };
     let cleaned = output.replace("--- REVIEW ---", "").trim();
 
-    // Look for Score, e.g. "Score: 9.5/10"
+    // Separate Code Fix if reviewer agent returned it
+    let codeFix = "";
+    const codeFixIndex = cleaned.indexOf("--- CODE FIX ---");
+    if (codeFixIndex !== -1) {
+      codeFix = cleaned.slice(codeFixIndex + 16).trim();
+      cleaned = cleaned.slice(0, codeFixIndex).trim();
+    }
+
     const scoreMatch = cleaned.match(/Score:\s*([0-9.]+\s*\/10)/i);
     let score = "";
     if (scoreMatch) {
@@ -202,7 +270,6 @@ function App() {
       cleaned = cleaned.replace(scoreMatch[0], "").trim();
     }
 
-    // Look for Recommendation verdict, e.g. "Recommendation: APPROVE"
     const verdictMatch = cleaned.match(/Recommendation:\s*(APPROVE|REQUEST CHANGES)/i);
     let verdict = "";
     if (verdictMatch) {
@@ -210,18 +277,14 @@ function App() {
       cleaned = cleaned.replace(verdictMatch[0], "").trim();
     }
 
-    return { score, verdict, content: cleaned };
+    codeFix = codeFix.replace(/^```[a-zA-Z]*\n/, "").replace(/\n```$/, "");
+    return { score, verdict, content: cleaned, codeFix };
   };
 
-  // Reader parser: attempts to find identified files and metadata
   const parseReaderOutput = (output) => {
     if (!output) return { files: [], raw: "" };
-
-    // Scan for potential files list from repo contents
     const lines = output.split("\n");
     const files = [];
-    
-    // Simple regex to extract filenames that end in common extensions or resemble them
     const fileRegex = /`([^`\s]+\.[a-zA-Z0-9]+)`|(?:\s|^)([a-zA-Z0-9_-]+\.[a-zA-Z0-9]+)(?:\s|$)/g;
     
     lines.forEach(line => {
@@ -233,8 +296,66 @@ function App() {
         }
       }
     });
-
     return { files, raw: output };
+  };
+
+  const parseTaskPlannerOutput = (output) => {
+    if (!output) return [];
+    const lines = output.split("\n");
+    const tasks = [];
+    let idCounter = 1;
+    
+    lines.forEach(line => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("- [ ]") || trimmed.startsWith("- [x]")) {
+        const textPart = trimmed.replace(/^-\s*\[[ x]\]\s*/i, "").trim();
+        const parts = textPart.split("|");
+        const description = parts[0]?.trim() || "Untitled Task";
+        
+        let priority = "Medium";
+        let estimate = "1h";
+        let dependencies = "None";
+        
+        parts.slice(1).forEach(part => {
+          const lower = part.toLowerCase();
+          if (lower.includes("priority:")) {
+            priority = part.replace(/priority:\s*/i, "").trim();
+          } else if (lower.includes("estimate:")) {
+            estimate = part.replace(/estimate:\s*/i, "").trim();
+          } else if (lower.includes("dependencies:")) {
+            dependencies = part.replace(/dependencies:\s*/i, "").trim();
+          }
+        });
+        
+        tasks.push({
+          id: idCounter++,
+          text: description,
+          priority,
+          estimate,
+          dependencies,
+          checked: false
+        });
+      }
+    });
+    return tasks;
+  };
+
+  const parseDocumentationOutput = (output) => {
+    if (!output) return { type: "README", content: "" };
+    let cleaned = output.replace("--- DOCUMENTATION ---", "").trim();
+    const typeMatch = cleaned.match(/Document Type:\s*([^\n]+)/i);
+    let docType = "README";
+    if (typeMatch) {
+      docType = typeMatch[1].trim();
+      cleaned = cleaned.replace(typeMatch[0], "").trim();
+    }
+    return { type: docType, content: cleaned };
+  };
+
+  const toggleTaskCheck = (taskId) => {
+    setKanbanTasks(prev => 
+      prev.map(t => t.id === taskId ? { ...t, checked: !t.checked } : t)
+    );
   };
 
   return (
@@ -242,7 +363,7 @@ function App() {
       <header className="header">
         <div className="logo">
           <span className="logo-icon">⚡</span>
-          <span className="logo-text">DevFlow <span>Agent</span></span>
+          <span className="logo-text">DevFlow <span>Agentic Suite</span></span>
         </div>
         <div className="header-actions">
           <button onClick={() => setShowDocs(true)} className="docs-btn">
@@ -263,122 +384,265 @@ function App() {
         </div>
       </header>
 
+      <div className="workspace-selectors">
+        <button
+          className={`workspace-tab ${workspaceMode === "orchestrator" ? "active" : ""}`}
+          onClick={() => { setWorkspaceMode("orchestrator"); setOrchestrateRes(null); setResult(null); setError(""); }}
+        >
+          🤖 Orchestrator (Auto)
+        </button>
+        <button
+          className={`workspace-tab ${workspaceMode === "code_review" ? "active" : ""}`}
+          onClick={() => { setWorkspaceMode("code_review"); setOrchestrateRes(null); setResult(null); setError(""); }}
+        >
+          🔍 Code Reviewer
+        </button>
+        <button
+          className={`workspace-tab ${workspaceMode === "task_planning" ? "active" : ""}`}
+          onClick={() => { setWorkspaceMode("task_planning"); setOrchestrateRes(null); setResult(null); setError(""); }}
+        >
+          📋 Task Planner
+        </button>
+        <button
+          className={`workspace-tab ${workspaceMode === "documentation" ? "active" : ""}`}
+          onClick={() => { setWorkspaceMode("documentation"); setOrchestrateRes(null); setResult(null); setError(""); }}
+        >
+          📝 Doc Writer
+        </button>
+        <button
+          className={`workspace-tab ${workspaceMode === "github_issue" ? "active" : ""}`}
+          onClick={() => { setWorkspaceMode("github_issue"); setOrchestrateRes(null); setResult(null); setError(""); }}
+        >
+          🔗 GitHub Issue Resolver
+        </button>
+      </div>
+
       <main className="main">
+        {/* HERO TITLE BLOCK */}
         <div className="hero">
-          <h1>GitHub Issue → Code Fix Pipeline</h1>
-          <p>Paste any GitHub issue details. Our AI agents will analyze the scope, generate a robust code fix, draft a PR description, and evaluate it.</p>
-        </div>
-
-        <div className="input-card">
-          <div className="input-options-selector">
-            <button
-              className={`option-tab ${inputOption === "issue-url" ? "active" : ""}`}
-              onClick={() => setInputOption("issue-url")}
-            >
-              🔗 Direct Issue URL
-            </button>
-            <button
-              className={`option-tab ${inputOption === "repo-issue" ? "active" : ""}`}
-              onClick={() => setInputOption("repo-issue")}
-            >
-              📂 Repo Link + Issue #
-            </button>
-            <button
-              className={`option-tab ${inputOption === "manual" ? "active" : ""}`}
-              onClick={() => setInputOption("manual")}
-            >
-              ✍️ Manual Owner/Repo
-            </button>
-          </div>
-
-          <div className="input-row">
-            {inputOption === "issue-url" && (
-              <div className="input-group">
-                <label>GitHub Issue Link</label>
-                <input
-                  placeholder="e.g. https://github.com/facebook/react/issues/12345"
-                  value={directIssueUrl}
-                  onChange={(e) => setDirectIssueUrl(e.target.value)}
-                />
-              </div>
-            )}
-
-            {inputOption === "repo-issue" && (
-              <>
-                <div className="input-group">
-                  <label>GitHub Repository Link or Path</label>
-                  <input
-                    placeholder="e.g. https://github.com/facebook/react or facebook/react"
-                    value={repoUrl}
-                    onChange={(e) => handleUrlChange(e.target.value)}
-                  />
-                </div>
-                <div className="input-group small">
-                  <label>Issue #</label>
-                  <input
-                    placeholder="e.g. 1"
-                    value={issueNumber}
-                    onChange={(e) => setIssueNumber(e.target.value)}
-                    type="number"
-                  />
-                </div>
-              </>
-            )}
-
-            {inputOption === "manual" && (
-              <>
-                <div className="input-group">
-                  <label>Repository Owner</label>
-                  <input
-                    placeholder="e.g. facebook"
-                    value={ownerName}
-                    onChange={(e) => setOwnerName(e.target.value)}
-                  />
-                </div>
-                <div className="input-group">
-                  <label>Repository Name</label>
-                  <input
-                    placeholder="e.g. react"
-                    value={repoName}
-                    onChange={(e) => setRepoName(e.target.value)}
-                  />
-                </div>
-                <div className="input-group small">
-                  <label>Issue #</label>
-                  <input
-                    placeholder="e.g. 1"
-                    value={issueNumber}
-                    onChange={(e) => setIssueNumber(e.target.value)}
-                    type="number"
-                  />
-                </div>
-              </>
-            )}
-          </div>
-
-          {error && (
-            <p className="error">
-              <span>⚠️</span> {error}
-            </p>
+          {workspaceMode === "orchestrator" && (
+            <>
+              <h1>DevFlow Smart Orchestrator</h1>
+              <p>Type any developer request or upload a file. The Orchestrator automatically routes it to the specialized agent.</p>
+            </>
           )}
-
-          <button
-            className={`analyse-btn ${loading ? "loading" : ""}`}
-            onClick={handleAnalyse}
-            disabled={loading}
-          >
-            {loading ? (
-              <>
-                <span className="spinner"></span>
-                Agents Collaborating...
-              </>
-            ) : (
-              "Run DevFlow Agent Pipeline →"
-            )}
-          </button>
+          {workspaceMode === "code_review" && (
+            <>
+              <h1>Code Review Specialist</h1>
+              <p>Upload a file or paste code. The agent scans security bugs, syntax leaks, complexity smells, and suggests optimized refactoring.</p>
+            </>
+          )}
+          {workspaceMode === "task_planning" && (
+            <>
+              <h1>Task Planner Specialist</h1>
+              <p>Provide feature requirements, user stories, or design criteria. The agent generates sprint checklist cards with estimated complexity.</p>
+            </>
+          )}
+          {workspaceMode === "documentation" && (
+            <>
+              <h1>Documentation Specialist</h1>
+              <p>Generate detailed JSDoc comments, Sphinx docstrings, API specifications, or README guidelines directly from your code.</p>
+            </>
+          )}
+          {workspaceMode === "github_issue" && (
+            <>
+              <h1>GitHub Issue → Code Fix Pipeline</h1>
+              <p>Resolve issue tickets autonomously. The system reads the issue, locates targets, writes fixes, and executes code quality checks.</p>
+            </>
+          )}
         </div>
 
-        {loading && (
+        {/* INPUT CONTAINER */}
+        <div className="input-card">
+          {workspaceMode === "github_issue" ? (
+            <>
+              <div className="input-options-selector">
+                <button
+                  className={`option-tab ${inputOption === "issue-url" ? "active" : ""}`}
+                  onClick={() => setInputOption("issue-url")}
+                >
+                  🔗 Direct Issue URL
+                </button>
+                <button
+                  className={`option-tab ${inputOption === "repo-issue" ? "active" : ""}`}
+                  onClick={() => setInputOption("repo-issue")}
+                >
+                  📂 Repo Link + Issue #
+                </button>
+                <button
+                  className={`option-tab ${inputOption === "manual" ? "active" : ""}`}
+                  onClick={() => setInputOption("manual")}
+                >
+                  ✍️ Manual Owner/Repo
+                </button>
+              </div>
+
+              <div className="input-row">
+                {inputOption === "issue-url" && (
+                  <div className="input-group">
+                    <label>GitHub Issue Link</label>
+                    <input
+                      placeholder="e.g. https://github.com/facebook/react/issues/12345"
+                      value={directIssueUrl}
+                      onChange={(e) => setDirectIssueUrl(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                {inputOption === "repo-issue" && (
+                  <>
+                    <div className="input-group">
+                      <label>GitHub Repository Link or Path</label>
+                      <input
+                        placeholder="e.g. https://github.com/facebook/react or facebook/react"
+                        value={repoUrl}
+                        onChange={(e) => handleUrlChange(e.target.value)}
+                      />
+                    </div>
+                    <div className="input-group small">
+                      <label>Issue #</label>
+                      <input
+                        placeholder="e.g. 1"
+                        value={issueNumber}
+                        onChange={(e) => setIssueNumber(e.target.value)}
+                        type="number"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {inputOption === "manual" && (
+                  <>
+                    <div className="input-group">
+                      <label>Repository Owner</label>
+                      <input
+                        placeholder="e.g. facebook"
+                        value={ownerName}
+                        onChange={(e) => setOwnerName(e.target.value)}
+                      />
+                    </div>
+                    <div className="input-group">
+                      <label>Repository Name</label>
+                      <input
+                        placeholder="e.g. react"
+                        value={repoName}
+                        onChange={(e) => setRepoName(e.target.value)}
+                      />
+                    </div>
+                    <div className="input-group small">
+                      <label>Issue #</label>
+                      <input
+                        placeholder="e.g. 1"
+                        value={issueNumber}
+                        onChange={(e) => setIssueNumber(e.target.value)}
+                        type="number"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {error && <p className="error"><span>⚠️</span> {error}</p>}
+
+              <button
+                className={`analyse-btn ${loading ? "loading" : ""}`}
+                onClick={handleAnalyse}
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <span className="spinner"></span>
+                    Agents Collaborating...
+                  </>
+                ) : (
+                  "Run DevFlow Issue Pipeline →"
+                )}
+              </button>
+            </>
+          ) : (
+            // DEVELOPER WORKSPACE GENERAL MODES
+            <>
+              <div className="suite-input-grid">
+                <div className="suite-input-column">
+                  <label className="suite-label">
+                    {workspaceMode === "orchestrator" && "Describe your task or paste instructions"}
+                    {workspaceMode === "code_review" && "Review instructions (optional)"}
+                    {workspaceMode === "task_planning" && "Explain feature requirements & goals"}
+                    {workspaceMode === "documentation" && "Documentation instructions (optional)"}
+                  </label>
+                  <textarea
+                    className="suite-textarea"
+                    placeholder={
+                      workspaceMode === "orchestrator"
+                        ? "e.g. Write Sphinx docstrings for this python file, or review this code to optimize closures..."
+                        : workspaceMode === "code_review"
+                        ? "e.g. Scan this file for timing attacks and clean up code smells..."
+                        : workspaceMode === "task_planning"
+                        ? "e.g. We need to implement an MFA verification endpoint using Twilio API with 1-day sprint tasks..."
+                        : "e.g. Write structured API endpoint documentation for this routes module..."
+                    }
+                    value={userQuery}
+                    onChange={(e) => setUserQuery(e.target.value)}
+                  />
+                </div>
+
+                <div className="suite-input-column">
+                  <div className="dropzone-header">
+                    <label className="suite-label">Code Sandbox Context</label>
+                    {uploadedFile && (
+                      <span className="uploaded-file-tag">
+                        📄 {uploadedFile.name}
+                        <button onClick={() => { setUploadedFile(null); setEditorCode(""); }} className="remove-file-btn">×</button>
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div
+                    className="file-dropzone"
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={handleFileDrop}
+                  >
+                    <textarea
+                      className="suite-code-textarea"
+                      placeholder="Paste source code snippet here, or drag & drop a file..."
+                      value={editorCode}
+                      onChange={(e) => setEditorCode(e.target.value)}
+                    />
+                    <div className="dropzone-footer">
+                      <label className="file-upload-btn">
+                        Upload File
+                        <input type="file" onChange={handleFileUpload} style={{ display: "none" }} />
+                      </label>
+                      <span className="dropzone-tip">Supports JS, TS, Python, CSS, HTML</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {error && <p className="error"><span>⚠️</span> {error}</p>}
+
+              <button
+                className={`analyse-btn ${loading ? "loading" : ""}`}
+                onClick={handleOrchestrate}
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <span className="spinner"></span>
+                    Agents Collaborating...
+                  </>
+                ) : (
+                  workspaceMode === "orchestrator"
+                    ? "Orchestrate Workspace Query →"
+                    : `Execute Specialist Agent →`
+                )}
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* LOADING INDICATOR FOR ISSUES */}
+        {loading && workspaceMode === "github_issue" && (
           <div className="pipeline-status">
             <div className="pipeline-step active">
               <span className="step-dot"></span>
@@ -395,6 +659,196 @@ function App() {
           </div>
         )}
 
+        {/* SUITE ORCHESTRATE OUTPUT VIEW */}
+        {orchestrateRes && (
+          <div className="suite-result-container">
+            {/* Orchestrator Audit Path Logger */}
+            <div className="orchestrator-audit-card">
+              <div className="audit-header">
+                <span className="audit-pulse"></span>
+                <h3>Orchestrator Routing Decision</h3>
+              </div>
+              <div className="audit-body">
+                <div className="audit-field">
+                  <span className="audit-label">Routed Specialist:</span>
+                  <span className={`audit-value route-${orchestrateRes.route}`}>
+                    {orchestrateRes.route === "code_review" && "💻 Code Review Agent"}
+                    {orchestrateRes.route === "task_planning" && "📋 Task Planner Agent"}
+                    {orchestrateRes.route === "documentation" && "📝 Documentation Agent"}
+                    {orchestrateRes.route === "general" && "💬 General Knowledge Agent"}
+                  </span>
+                </div>
+                <div className="audit-field">
+                  <span className="audit-label">Routing Rationale:</span>
+                  <span className="audit-desc">{orchestrateRes.explanation}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Specialist Output Content Blocks */}
+            <div className="specialist-output-card">
+              {orchestrateRes.route === "code_review" && (
+                (() => {
+                  const { score, verdict, content, codeFix } = parseReviewerOutput(orchestrateRes.output);
+                  return (
+                    <div className="reviewer-suite-layout">
+                      <div className="reviewer-grid">
+                        <div style={{ display: "grid", gridTemplateColumns: score || verdict ? "220px 1fr" : "1fr", gap: "24px" }}>
+                          {(score || verdict) && (
+                            <div className="score-gauge-card">
+                              {score && (
+                                <div className="gauge-ring">
+                                  <div className="gauge-ring-content">
+                                    <div className="score-val">{score.split("/")[0]}</div>
+                                    <div className="score-label">/10</div>
+                                  </div>
+                                </div>
+                              )}
+                              {verdict && (
+                                <div className={`verdict-banner ${verdict.includes("APPROVE") ? "approve" : "changes"}`}>
+                                  {verdict}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <div className="reviewer-text-card">
+                            <h3 className="section-title">Detailed Reviewer Report</h3>
+                            <pre className="raw-text">{content}</pre>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {codeFix && (
+                        <div className="sub-card" style={{ marginTop: "24px" }}>
+                          <h3>
+                            Refactored Code Fix Suggestion
+                            <button className="copy-btn" onClick={() => copyToClipboard(codeFix)}>
+                              Copy Code
+                            </button>
+                          </h3>
+                          <div className="code-viewer-container">
+                            <pre><code>{codeFix}</code></pre>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()
+              )}
+
+              {orchestrateRes.route === "task_planning" && (
+                <div className="planner-suite-layout">
+                  <h3 className="section-title">Sprint Kanban Board</h3>
+                  {kanbanTasks.length > 0 ? (
+                    <div className="kanban-board">
+                      <div className="kanban-column">
+                        <h4>📋 To Do ({kanbanTasks.filter(t => !t.checked).length})</h4>
+                        <div className="kanban-cards">
+                          {kanbanTasks.filter(t => !t.checked).map(task => (
+                            <div key={task.id} className="kanban-card">
+                              <div className="kanban-card-header">
+                                <span className={`priority-badge ${task.priority.toLowerCase()}`}>
+                                  {task.priority}
+                                </span>
+                                <span className="estimate-badge">{task.estimate}</span>
+                              </div>
+                              <p className="kanban-card-text">{task.text}</p>
+                              {task.dependencies !== "None" && (
+                                <div className="dependency-tag">🔗 Dep: {task.dependencies}</div>
+                              )}
+                              <label className="kanban-checkbox-label">
+                                <input 
+                                  type="checkbox" 
+                                  checked={task.checked} 
+                                  onChange={() => toggleTaskCheck(task.id)}
+                                />
+                                Mark Complete
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="kanban-column">
+                        <h4>✅ Completed ({kanbanTasks.filter(t => t.checked).length})</h4>
+                        <div className="kanban-cards">
+                          {kanbanTasks.filter(t => t.checked).map(task => (
+                            <div key={task.id} className="kanban-card completed">
+                              <div className="kanban-card-header">
+                                <span className="priority-badge done">Done</span>
+                                <span className="estimate-badge">{task.estimate}</span>
+                              </div>
+                              <p className="kanban-card-text">{task.text}</p>
+                              <label className="kanban-checkbox-label">
+                                <input 
+                                  type="checkbox" 
+                                  checked={task.checked} 
+                                  onChange={() => toggleTaskCheck(task.id)}
+                                />
+                                Completed
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="no-tasks-fallback">
+                      <p>The planner could not parse task list blocks. Below is the raw breakdown:</p>
+                    </div>
+                  )}
+                  
+                  <div className="sub-card" style={{ marginTop: "24px" }}>
+                    <h3>Planning Output & Notes</h3>
+                    <pre className="raw-text" style={{ whiteSpace: "pre-wrap" }}>{orchestrateRes.output}</pre>
+                  </div>
+                </div>
+              )}
+
+              {orchestrateRes.route === "documentation" && (
+                (() => {
+                  const parsed = parseDocumentationOutput(orchestrateRes.output);
+                  return (
+                    <div className="split-layout">
+                      <div className="sub-card">
+                        <h3>Rendered Preview ({parsed.type})</h3>
+                        <div className="markdown-preview">
+                          <pre className="raw-text" style={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
+                            {parsed.content}
+                          </pre>
+                        </div>
+                      </div>
+                      <div className="sub-card">
+                        <h3>
+                          Raw Documentation Markdown
+                          <button className="copy-btn" onClick={() => copyToClipboard(parsed.content)}>
+                            Copy Markdown
+                          </button>
+                        </h3>
+                        <div className="code-viewer-container">
+                          <pre><code>{parsed.content}</code></pre>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()
+              )}
+
+              {orchestrateRes.route === "general" && (
+                <div className="general-suite-layout">
+                  <h3 className="section-title">Agent Response</h3>
+                  <div className="general-response-bubble">
+                    <pre className="raw-text" style={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
+                      {orchestrateRes.output}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* LEGACY PIPELINE OUTPUT VIEW */}
         {result && (
           <div className="result-card">
             <div className="tabs">
@@ -433,7 +887,7 @@ function App() {
                           ))}
                         </div>
                       ) : (
-                        <p style={{ color: "#666", fontSize: "14px" }}>Scanning repository contents to identify targets...</p>
+                        <p style={{ color: "#888", fontSize: "14px" }}>Scanning repository contents to identify targets...</p>
                       )}
                     </div>
                   </div>
@@ -476,36 +930,50 @@ function App() {
 
               {/* REVIEWER TAB */}
               {activeTab === "reviewer" && (() => {
-                const { score, verdict, content } = parseReviewerOutput(result.reviewer);
+                const { score, verdict, content, codeFix } = parseReviewerOutput(result.reviewer);
                 return (
-                  <div className="reviewer-grid">
-                    <div style={{ display: "grid", gridTemplateColumns: score || verdict ? "220px 1fr" : "1fr", gap: "24px" }}>
-                      {(score || verdict) && (
-                        <div className="score-gauge-card">
-                          {score && (
-                            <>
+                  <div className="reviewer-suite-layout">
+                    <div className="reviewer-grid">
+                      <div style={{ display: "grid", gridTemplateColumns: score || verdict ? "220px 1fr" : "1fr", gap: "24px" }}>
+                        {(score || verdict) && (
+                          <div className="score-gauge-card">
+                            {score && (
                               <div className="gauge-ring">
                                 <div className="gauge-ring-content">
                                   <div className="score-val">{score.split("/")[0]}</div>
                                   <div className="score-label">/10</div>
                                 </div>
                               </div>
-                            </>
-                          )}
-                          {verdict && (
-                            <div className={`verdict-banner ${verdict.includes("APPROVE") ? "approve" : "changes"}`}>
-                              {verdict}
-                            </div>
-                          )}
+                            )}
+                            {verdict && (
+                              <div className={`verdict-banner ${verdict.includes("APPROVE") ? "approve" : "changes"}`}>
+                                {verdict}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <div className="reviewer-text-card">
+                          <h3 style={{ fontSize: "14px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.05em", color: "#ff6b00", marginBottom: "16px" }}>
+                            Detailed Reviewer Report
+                          </h3>
+                          <pre className="raw-text">{content}</pre>
                         </div>
-                      )}
-                      <div className="reviewer-text-card">
-                        <h3 style={{ fontSize: "14px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.05em", color: "#ff6b00", marginBottom: "16px" }}>
-                          Detailed Reviewer Report
-                        </h3>
-                        <pre className="raw-text">{content}</pre>
                       </div>
                     </div>
+                    
+                    {codeFix && (
+                      <div className="sub-card" style={{ marginTop: "24px" }}>
+                        <h3>
+                          Refactored Code Fix Suggestion
+                          <button className="copy-btn" onClick={() => copyToClipboard(codeFix)}>
+                            Copy Code
+                          </button>
+                        </h3>
+                        <div className="code-viewer-container">
+                          <pre><code>{codeFix}</code></pre>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -518,48 +986,35 @@ function App() {
         <div className="docs-modal-overlay" onClick={() => setShowDocs(false)}>
           <div className="docs-modal" onClick={(e) => e.stopPropagation()}>
             <header className="docs-header">
-              <h2>📚 DevFlow Agent Pipeline Documentation</h2>
+              <h2>📚 DevFlow Agentic Suite Documentation</h2>
               <button className="close-btn" onClick={() => setShowDocs(false)}>×</button>
             </header>
             <div className="docs-body">
               <section className="docs-section">
                 <h3>🔍 1. How It Works</h3>
-                <p>DevFlow runs a multi-agent collaboration flow using Google Gemini & ADK:</p>
+                <p>DevFlow is an intelligent multi-agent environment powered by Gemini + ADK:</p>
                 <ul>
-                  <li><strong>Reader Agent:</strong> Fetches the GitHub issue details, scans the repository directories recursively, and identifies which files require modification.</li>
-                  <li><strong>Coder Agent:</strong> Analyzes the issue context and files, writes a clean code fix block, and drafts a descriptive Pull Request description.</li>
-                  <li><strong>Reviewer Agent:</strong> Reviews the proposed code changes, provides feedback (strengths, issues, tips), assigns a quality score, and decides whether to approve.</li>
+                  <li><strong>Orchestrator Mode:</strong> Intelligently classifies the query and routes it to the matching agent module, returning a routing audit description.</li>
+                  <li><strong>Code Reviewer:</strong> Analyzes raw files or code snippets. Checks variables, memory loops, imports, and outputs an assessment rating out of 10.</li>
+                  <li><strong>Task Planner:</strong> Formulates Sprint planning checklist cards based on high-level feature requirements, which rendering into interactive Kanban Boards.</li>
+                  <li><strong>Doc Writer:</strong> Automatically writes high-quality Markdown descriptions or code docstrings from functions.</li>
                 </ul>
               </section>
 
               <section className="docs-section">
-                <h3>🚀 2. Supported Formats</h3>
-                <p>You can input target issues in three convenient ways using the selector tabs:</p>
-                <div className="format-grid">
-                  <div className="format-card">
-                    <h4>Direct Issue URL</h4>
-                    <p>Paste a full issue link directly:</p>
-                    <code>https://github.com/owner/repo/issues/123</code>
-                  </div>
-                  <div className="format-card">
-                    <h4>Repository & Issue No.</h4>
-                    <p>Enter repository URL/path and issue number separately:</p>
-                    <code>github.com/owner/repo</code> + <code>123</code>
-                  </div>
-                  <div className="format-card">
-                    <h4>Manual Fields</h4>
-                    <p>Explicitly specify owner, repo, and issue number:</p>
-                    <code>owner</code>, <code>repo</code>, <code>123</code>
-                  </div>
-                </div>
+                <h3>🚀 2. Workspace Integration</h3>
+                <ul>
+                  <li><strong>File Sandbox:</strong> Drag any code file directly over the editor sandbox. The contents will be loaded instantly to assist your query.</li>
+                  <li><strong>Dynamic Kanban:</strong> planner cards can be toggled interactively to track sprint checklists.</li>
+                </ul>
               </section>
 
               <section className="docs-section">
-                <h3>💡 3. Quick Tips</h3>
+                <h3>💡 3. Setup Specifications</h3>
                 <ul>
-                  <li><strong>Nested Folders:</strong> The agents are trained to traverse subdirectory structures (e.g. <code>public/Chronosphere/</code>) to find files even if they aren't in the root path.</li>
-                  <li><strong>Copy Code:</strong> Hover over the Code Fix block in the Coder tab to copy the generated patch directly to your clipboard.</li>
-                  <li><strong>API Endpoint:</strong> Ensure the FastAPI server is running on port <code>8001</code> (or customize the endpoint in <code>App.jsx</code>).</li>
+                  <li><strong>FastAPI backend:</strong> Starts on port <code>8001</code>.</li>
+                  <li><strong>Frontend Vite:</strong> Starts on port <code>5174</code>.</li>
+                  <li><strong>Localtunnel for Cloud Hosting:</strong> Execute uvicorn and expose port 8001 using <code>lt --port 8001</code> inside your Kaggle container workspace.</li>
                 </ul>
               </section>
             </div>

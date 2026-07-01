@@ -14,36 +14,49 @@ print("GOOGLE_CLOUD_PROJECT:", repr(os.environ.get("GOOGLE_CLOUD_PROJECT")))
 print("GOOGLE_CLOUD_LOCATION:", repr(os.environ.get("GOOGLE_CLOUD_LOCATION")))
 print("----------------------")
 
-from agents import run_devflow_pipeline
+from agents import run_orchestrated_pipeline
 
 def run_pipeline_test():
-    print("--- Starting Multi-Agent Pipeline Test ---")
-    owner = "dhairyagothi"
-    repo = "100_days_100_web_project"
-    issue_number = 9834
+    print("--- Starting Orchestrated Multi-Agent Suite Test ---")
     
-    print(f"Triggering pipeline for {owner}/{repo} #{issue_number}...")
-    try:
-        results = run_devflow_pipeline(owner=owner, repo=repo, issue_number=issue_number)
-        
-        print("\n==========================================")
-        print("AGENT 1: READER AGENT OUTPUT")
-        print("==========================================")
-        print(results.get("reader", "No output from Reader Agent"))
-        
-        print("\n==========================================")
-        print("AGENT 2: CODER AGENT OUTPUT")
-        print("==========================================")
-        print(results.get("coder", "No output from Coder Agent"))
-        
-        print("\n==========================================")
-        print("AGENT 3: REVIEWER AGENT OUTPUT")
-        print("==========================================")
-        print(results.get("reviewer", "No output from Reviewer Agent"))
-        print("\n==========================================")
-        print("[SUCCESS] SUCCESS: Full multi-agent pipeline test finished!")
-    except Exception as e:
-        print(f"\n[ERROR] Error running the pipeline: {e}")
+    test_cases = [
+        {
+            "name": "Code Review Route Test",
+            "query": "Review this javascript code block and check for leaks:\n\nfunction process() {\n  for(var i=0; i<10; i++) {\n    setTimeout(function() { console.log(i); }, 100);\n  }\n}",
+            "expected_agent": "code_review"
+        },
+        {
+            "name": "Task Planning Route Test",
+            "query": "Create a sprint breakdown plan for adding Google OAuth log-in feature to our backend API.",
+            "expected_agent": "task_planning"
+        },
+        {
+            "name": "Documentation Route Test",
+            "query": "Write JSDoc comments for this function: function calculateDistance(x1, y1, x2, y2) { return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)); }",
+            "expected_agent": "documentation"
+        },
+        {
+            "name": "General Query Route Test",
+            "query": "What is the difference between var, let, and const in JavaScript?",
+            "expected_agent": "general"
+        }
+    ]
+
+    for tc in test_cases:
+        print(f"\n==========================================")
+        print(f"RUNNING TEST: {tc['name']}")
+        print(f"==========================================")
+        print(f"Prompt: {tc['query'][:100]}...")
+        try:
+            res = run_orchestrated_pipeline(query=tc["query"])
+            print(f"-> Routed To: {res.get('route')}")
+            print(f"-> Rationale: {res.get('explanation')}")
+            print("\n--- Output ---")
+            print(res.get("output", "").strip()[:400])
+            print("--------------")
+            print(f"[SUCCESS] Test '{tc['name']}' finished!")
+        except Exception as e:
+            print(f"[ERROR] Test '{tc['name']}' failed with error: {e}")
 
 if __name__ == "__main__":
     run_pipeline_test()
