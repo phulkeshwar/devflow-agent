@@ -2,7 +2,9 @@ import os
 import requests
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env file using absolute path relative to this file
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(dotenv_path=os.path.join(backend_dir, ".env"))
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 

@@ -4,8 +4,9 @@
 import os
 from dotenv import load_dotenv
 
-# Load env variables first
-load_dotenv(override=True)
+# Load .env file using absolute path relative to this file
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(dotenv_path=os.path.join(backend_dir, ".env"), override=True)
 
 print("--- ENV VARIABLES ---")
 print("GEMINI_API_KEY:", repr(os.environ.get("GEMINI_API_KEY")))
@@ -14,9 +15,10 @@ print("GOOGLE_CLOUD_PROJECT:", repr(os.environ.get("GOOGLE_CLOUD_PROJECT")))
 print("GOOGLE_CLOUD_LOCATION:", repr(os.environ.get("GOOGLE_CLOUD_LOCATION")))
 print("----------------------")
 
+import asyncio
 from agents import run_orchestrated_pipeline
 
-def run_pipeline_test():
+async def run_pipeline_test():
     print("--- Starting Orchestrated Multi-Agent Suite Test ---")
     
     test_cases = [
@@ -48,7 +50,7 @@ def run_pipeline_test():
         print(f"==========================================")
         print(f"Prompt: {tc['query'][:100]}...")
         try:
-            res = run_orchestrated_pipeline(query=tc["query"])
+            res = await run_orchestrated_pipeline(query=tc["query"])
             print(f"-> Routed To: {res.get('route')}")
             print(f"-> Rationale: {res.get('explanation')}")
             print("\n--- Output ---")
@@ -59,4 +61,4 @@ def run_pipeline_test():
             print(f"[ERROR] Test '{tc['name']}' failed with error: {e}")
 
 if __name__ == "__main__":
-    run_pipeline_test()
+    asyncio.run(run_pipeline_test())
