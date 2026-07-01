@@ -8,9 +8,13 @@ backend_dir = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(dotenv_path=os.path.join(backend_dir, ".env"), override=True)
 
 # Purge inherited GCP environment variables to force google-genai to use the API key
-for gcp_var in ["GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_API_KEY"]:
+for gcp_var in ["GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS"]:
     if gcp_var in os.environ:
         del os.environ[gcp_var]
+
+# Map GOOGLE_API_KEY to GEMINI_API_KEY if needed (e.g. in Render production environment)
+if "GOOGLE_API_KEY" in os.environ and "GEMINI_API_KEY" not in os.environ:
+    os.environ["GEMINI_API_KEY"] = os.environ["GOOGLE_API_KEY"]
 
 # Force Google AI Studio mode instead of Vertex AI mode (prevents GCP project inheritance conflict)
 os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "False"
