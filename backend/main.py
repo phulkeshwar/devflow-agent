@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from typing import Optional
 from pydantic import BaseModel
 from agents import run_devflow_pipeline, run_orchestrated_pipeline
 
@@ -20,7 +21,7 @@ class IssueRequest(BaseModel):
 
 class OrchestrateRequest(BaseModel):
     query: str
-    agent: str = None
+    agent: Optional[str] = None
 
 @app.get("/")
 def root():

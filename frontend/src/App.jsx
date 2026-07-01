@@ -157,7 +157,20 @@ function App() {
       }
     } catch (err) {
       console.error(err);
-      setError(err.response?.data?.detail || "Could not connect to the backend server. Make sure FastAPI is running.");
+      let errorMsg = "Could not connect to the backend server. Make sure FastAPI is running.";
+      if (err.response?.data?.detail) {
+        const detail = err.response.data.detail;
+        if (typeof detail === "string") {
+          errorMsg = detail;
+        } else if (Array.isArray(detail)) {
+          errorMsg = detail.map(d => `${d.loc ? d.loc.join(".") : "Error"}: ${d.msg}`).join("; ");
+        } else if (typeof detail === "object") {
+          errorMsg = JSON.stringify(detail);
+        }
+      } else if (err.message) {
+        errorMsg = err.message;
+      }
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -226,7 +239,20 @@ function App() {
       }
     } catch (err) {
       console.error(err);
-      setError(err.response?.data?.detail || "Could not connect to the backend server. Make sure FastAPI is running.");
+      let errorMsg = "Could not connect to the backend server. Make sure FastAPI is running.";
+      if (err.response?.data?.detail) {
+        const detail = err.response.data.detail;
+        if (typeof detail === "string") {
+          errorMsg = detail;
+        } else if (Array.isArray(detail)) {
+          errorMsg = detail.map(d => `${d.loc ? d.loc.join(".") : "Error"}: ${d.msg}`).join("; ");
+        } else if (typeof detail === "object") {
+          errorMsg = JSON.stringify(detail);
+        }
+      } else if (err.message) {
+        errorMsg = err.message;
+      }
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -357,7 +383,7 @@ function App() {
   const parseInlineMarkdown = (text) => {
     if (!text) return "";
     let html = text
-      .replace(/&/g, "&amp;")
+      .replace(/&(?![a-zA-Z0-9#]+;)/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
     
@@ -367,6 +393,13 @@ function App() {
 
     // Bold (**text**)
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+    // Convert inline double/triple dashes to en/em dashes outside backticks
+    const parts = html.split("`");
+    for (let i = 0; i < parts.length; i += 2) {
+      parts[i] = parts[i].replace(/---/g, "&mdash;").replace(/--/g, "&ndash;");
+    }
+    html = parts.join("`");
 
     // Inline Code (`code`)
     html = html.replace(/`(.*?)`/g, '<code class="doc-inline-code">$1</code>');
