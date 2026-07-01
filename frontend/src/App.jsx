@@ -21,6 +21,7 @@ function App() {
   const [ownerName, setOwnerName] = useState("");
   const [repoName, setRepoName] = useState("");
   const [issueNumber, setIssueNumber] = useState("");
+  const [analyzedRepo, setAnalyzedRepo] = useState({ owner: "", repo: "" });
 
   // Loading and result states
   const [loading, setLoading] = useState(false);
@@ -208,6 +209,7 @@ function App() {
     setOrchestrateRes(null);
     setResult(null);
     setLoading(true);
+    setAnalyzedRepo({ owner, repo });
 
     try {
       const res = await axios.post(`${API}/analyse`, {
@@ -986,10 +988,17 @@ function App() {
                       {parsed.files.length > 0 ? (
                         <div className="file-timeline">
                           {parsed.files.map((file, i) => (
-                            <div key={i} className="file-timeline-item">
+                            <a
+                              key={i}
+                              href={`https://github.com/${analyzedRepo.owner}/${analyzedRepo.repo}/blob/main/${file}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="file-timeline-item"
+                              style={{ textDecoration: "none", color: "inherit", cursor: "pointer" }}
+                            >
                               <span>📁 {file}</span>
                               <span className="timeline-badge">Inspect Target</span>
-                            </div>
+                            </a>
                           ))}
                         </div>
                       ) : loading ? (
