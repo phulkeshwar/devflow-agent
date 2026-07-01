@@ -352,6 +352,103 @@ function App() {
     return { type: docType, content: cleaned };
   };
 
+  const parseInlineMarkdown = (text) => {
+    if (!text) return "";
+    let html = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    
+    // Parse checkbox formats [ ] and [x]
+    html = html.replace(/\[\s*\]/g, '<input type="checkbox" disabled style="vertical-align: middle; margin-right: 6px; pointer-events: none;" />');
+    html = html.replace(/\[[xX]\]/g, '<input type="checkbox" disabled checked style="vertical-align: middle; margin-right: 6px; pointer-events: none;" />');
+
+    // Bold (**text**)
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+    // Inline Code (`code`)
+    html = html.replace(/`(.*?)`/g, '<code class="doc-inline-code">$1</code>');
+
+    return html;
+  };
+
+  const renderMarkdownToHTML = (markdown) => {
+    if (!markdown) return "";
+    const lines = markdown.split("\n");
+    let inList = false;
+    let inCodeBlock = false;
+    let resultHtml = [];
+
+    lines.forEach(line => {
+      let trimmed = line.trim();
+
+      // Code blocks
+      if (trimmed.startsWith("```")) {
+        inCodeBlock = !inCodeBlock;
+        if (inCodeBlock) {
+          resultHtml.push('<pre class="doc-code-block"><code>');
+        } else {
+          resultHtml.push('</code></pre>');
+        }
+        return;
+      }
+
+      if (inCodeBlock) {
+        const escaped = line
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        resultHtml.push(escaped + "\n");
+        return;
+      }
+
+      // Horizontal Rule (--- or ***)
+      if (/^[*-]{3,}$/.test(trimmed)) {
+        resultHtml.push('<hr class="doc-hr" />');
+        return;
+      }
+
+      // List points
+      const isListItem = trimmed.startsWith("* ") || trimmed.startsWith("- ");
+      if (isListItem) {
+        if (!inList) {
+          resultHtml.push('<ul class="doc-list">');
+          inList = true;
+        }
+        const text = trimmed.substring(2);
+        resultHtml.push(`<li>${parseInlineMarkdown(text)}</li>`);
+        return;
+      } else {
+        if (inList) {
+          resultHtml.push('</ul>');
+          inList = false;
+        }
+      }
+
+      // Heading regex matches (# to ######)
+      if (trimmed.startsWith("#")) {
+        const hashMatch = trimmed.match(/^(#+)\s*(.*)$/);
+        if (hashMatch) {
+          const level = Math.min(hashMatch[1].length, 6);
+          const text = hashMatch[2] || "\u00a0";
+          resultHtml.push(`<h${level}>${parseInlineMarkdown(text)}</h${level}>`);
+          return;
+        }
+      }
+
+      if (trimmed === "") {
+        resultHtml.push('<br/>');
+      } else {
+        resultHtml.push(`<p>${parseInlineMarkdown(line)}</p>`);
+      }
+    });
+
+    if (inList) {
+      resultHtml.push('</ul>');
+    }
+    return resultHtml.join("");
+  };
+
   const toggleTaskCheck = (taskId) => {
     setKanbanTasks(prev => 
       prev.map(t => t.id === taskId ? { ...t, checked: !t.checked } : t)
@@ -693,7 +790,7 @@ function App() {
                   return (
                     <div className="reviewer-suite-layout">
                       <div className="reviewer-grid">
-                        <div style={{ display: "grid", gridTemplateColumns: score || verdict ? "220px 1fr" : "1fr", gap: "24px" }}>
+                        <div className={`reviewer-dashboard-grid ${!(score || verdict) ? "single-column" : ""}`}>
                           {(score || verdict) && (
                             <div className="score-gauge-card">
                               {score && (
@@ -799,7 +896,12 @@ function App() {
                   )}
                   
                   <div className="sub-card" style={{ marginTop: "24px" }}>
-                    <h3>Planning Output & Notes</h3>
+                    <h3>
+                      Planning Output & Notes
+                      <button className="copy-btn" onClick={() => copyToClipboard(orchestrateRes.output)}>
+                        Copy Output
+                      </button>
+                    </h3>
                     <pre className="raw-text" style={{ whiteSpace: "pre-wrap" }}>{orchestrateRes.output}</pre>
                   </div>
                 </div>
@@ -810,14 +912,7 @@ function App() {
                   const parsed = parseDocumentationOutput(orchestrateRes.output);
                   return (
                     <div className="split-layout">
-                      <div className="sub-card">
-                        <h3>Rendered Preview ({parsed.type})</h3>
-                        <div className="markdown-preview">
-                          <pre className="raw-text" style={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
-                            {parsed.content}
-                          </pre>
-                        </div>
-                      </div>
+                      {/* Left: Raw Markdown Code */}
                       <div className="sub-card">
                         <h3>
                           Raw Documentation Markdown
@@ -827,6 +922,17 @@ function App() {
                         </h3>
                         <div className="code-viewer-container">
                           <pre><code>{parsed.content}</code></pre>
+                        </div>
+                      </div>
+
+                      {/* Right: Rendered HTML Preview */}
+                      <div className="sub-card">
+                        <h3>Rendered Preview ({parsed.type})</h3>
+                        <div className="markdown-preview">
+                          <div
+                            className="markdown-rendered-view"
+                            dangerouslySetInnerHTML={{ __html: renderMarkdownToHTML(parsed.content) }}
+                          />
                         </div>
                       </div>
                     </div>
@@ -886,8 +992,10 @@ function App() {
                             </div>
                           ))}
                         </div>
-                      ) : (
+                      ) : loading ? (
                         <p style={{ color: "#888", fontSize: "14px" }}>Scanning repository contents to identify targets...</p>
+                      ) : (
+                        <p style={{ color: "#888", fontSize: "14px" }}>No specific files identified. Analysis complete.</p>
                       )}
                     </div>
                   </div>
@@ -934,7 +1042,7 @@ function App() {
                 return (
                   <div className="reviewer-suite-layout">
                     <div className="reviewer-grid">
-                      <div style={{ display: "grid", gridTemplateColumns: score || verdict ? "220px 1fr" : "1fr", gap: "24px" }}>
+                      <div className={`reviewer-dashboard-grid ${!(score || verdict) ? "single-column" : ""}`}>
                         {(score || verdict) && (
                           <div className="score-gauge-card">
                             {score && (

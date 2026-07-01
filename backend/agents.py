@@ -121,15 +121,35 @@ reader_agent = Agent(
     name="reader_agent",
     model=GEMINI_MODEL,
     description="Reads a GitHub issue and identifies relevant files.",
-    instruction="You are an issue reader agent.",
+    instruction="""
+    You are a senior developer who analyses GitHub issues.
+    When given an owner, repo, and issue number:
+    1. Fetch the issue details using fetch_github_issue.
+    2. Check the repo structure. Since files can be in subdirectories (like folders prefixed with [DIR] in fetch_repo_files results), navigate into relevant folders by calling fetch_repo_files with the `path` parameter (e.g. `Day-40/Chronos+`).
+    3. Identify which specific files are most likely related to the issue.
+    4. Return a structured summary: issue title, description, labels, and relevant files (including their full paths, e.g., Day-40/Chronos+/index.html).
+    Be concise and precise.
+    """,
     tools=[fetch_github_issue, fetch_repo_files]
 )
 
 coder_agent = Agent(
     name="coder_agent",
     model=GEMINI_MODEL,
-    description="Generates a code fix.",
-    instruction="You are a code fix agent.",
+    description="Generates a code fix based on the issue analysis.",
+    instruction="""
+    You are an expert software engineer.
+    When given an issue summary and relevant file names:
+    1. If a relevant file is provided, fetch its content using fetch_file_content
+    2. Analyse the issue carefully
+    3. Write a clean, working code fix
+    4. Write a clear PR description explaining what you changed and why
+    Format your response as:
+    --- CODE FIX ---
+    <the actual code>
+    --- PR DESCRIPTION ---
+    <title and description for the pull request>
+    """,
     tools=[fetch_file_content]
 )
 
@@ -222,13 +242,23 @@ def run_orchestrated_pipeline(query: str, target_agent: str = None) -> dict:
     }
 
 def run_devflow_pipeline(owner: str, repo: str, issue_number: int) -> dict:
-    """Legacy GitHub issue pipeline compatibility wrapper."""
-    # We maintain this so old routes or checks don't break
-    issue = fetch_github_issue(owner, repo, issue_number)
-    query = f"Review this issue and plan a fix:\nIssue Title: {issue.get('title')}\nDescription: {issue.get('body')}"
-    res = run_orchestrated_pipeline(query, target_agent="reviewer")
+    """Runs the full 3-agent pipeline and returns all results."""
+    sid = str(uuid.uuid4())
+
+    # Step 1: Reader Agent
+    reader_prompt = f"Analyze issue #{issue_number} in repository {owner}/{repo}"
+    reader_output = run_agent(reader_agent, reader_prompt, sid + "-reader")
+
+    # Step 2: Coder Agent
+    coder_prompt = f"Based on this issue analysis:\n{reader_output}\nGenerate a code fix for repository {owner}/{repo}."
+    coder_output = run_agent(coder_agent, coder_prompt, sid + "-coder")
+
+    # Step 3: Reviewer Agent
+    reviewer_prompt = f"Review this code fix:\n{coder_output}"
+    reviewer_output = run_agent(reviewer_agent, reviewer_prompt, sid + "-reviewer")
+
     return {
-        "reader": f"Issue: {issue.get('title')}\n{issue.get('body')}",
-        "coder": res.get("output"),
-        "reviewer": res.get("output")
+        "reader": reader_output,
+        "coder": coder_output,
+        "reviewer": reviewer_output
     }
