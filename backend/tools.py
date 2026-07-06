@@ -36,12 +36,22 @@ def fetch_repo_files(owner: str, repo: str, path: str = "") -> list:
     if response.status_code != 200:
         return []
     
+    data = response.json()
+    if isinstance(data, dict):
+        if data.get("type") == "dir":
+            return [f"[DIR] {data.get('name')}"]
+        return [data.get("name", "")]
+        
+    if not isinstance(data, list):
+        return []
+        
     items = []
-    for item in response.json():
-        if item["type"] == "dir":
-            items.append(f"[DIR] {item['name']}")
-        else:
-            items.append(item["name"])
+    for item in data:
+        if isinstance(item, dict):
+            if item.get("type") == "dir":
+                items.append(f"[DIR] {item.get('name')}")
+            else:
+                items.append(item.get("name"))
     return items
 
 def fetch_file_content(owner: str, repo: str, filepath: str) -> str:
