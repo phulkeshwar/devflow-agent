@@ -310,21 +310,39 @@ function App() {
   };
 
   const parseReaderOutput = (output) => {
-    if (!output) return { files: [], raw: "" };
+    if (!output) return { verifiedFiles: [], suggestedFiles: [], raw: "" };
     const lines = output.split("\n");
-    const files = [];
+    const verifiedFiles = [];
+    const suggestedFiles = [];
+    let currentSection = "general";
+    
     const fileRegex = /`([^`\s]+\.[a-zA-Z0-9]+)`|(?:\s|^)([a-zA-Z0-9_-]+\.[a-zA-Z0-9]+)(?:\s|$)/g;
     
     lines.forEach(line => {
+      const lowerLine = line.toLowerCase();
+      if (lowerLine.includes("verified files") || lowerLine.includes("verified file")) {
+        currentSection = "verified";
+      } else if (lowerLine.includes("suggested files") || lowerLine.includes("suggested file")) {
+        currentSection = "suggested";
+      }
+      
       let match;
+      fileRegex.lastIndex = 0; // reset regex state
       while ((match = fileRegex.exec(line)) !== null) {
         const file = match[1] || match[2];
-        if (file && !files.includes(file) && !file.startsWith("http")) {
-          files.push(file);
+        if (file && !file.startsWith("http")) {
+          if (currentSection === "verified") {
+            if (!verifiedFiles.includes(file)) verifiedFiles.push(file);
+          } else if (currentSection === "suggested") {
+            if (!suggestedFiles.includes(file)) suggestedFiles.push(file);
+          } else {
+            // Default fallback
+            if (!verifiedFiles.includes(file)) verifiedFiles.push(file);
+          }
         }
       }
     });
-    return { files, raw: output };
+    return { verifiedFiles, suggestedFiles, raw: output };
   };
 
   const parseTaskPlannerOutput = (output) => {
@@ -1018,27 +1036,54 @@ function App() {
                     </div>
                     <div className="sub-card">
                       <h3>Identified Affected Files</h3>
-                      {parsed.files.length > 0 ? (
-                        <div className="file-timeline">
-                          {parsed.files.map((file, i) => (
-                            <a
-                              key={i}
-                              href={`https://github.com/${analyzedRepo.owner}/${analyzedRepo.repo}/find/HEAD?q=${encodeURIComponent(file.split('/').pop())}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="file-timeline-item"
-                              style={{ textDecoration: "none", color: "inherit", cursor: "pointer" }}
-                              title={`Search for ${file} in ${analyzedRepo.owner}/${analyzedRepo.repo}`}
-                            >
-                              <span>📁 {file}</span>
-                              <span className="timeline-badge">Inspect Target</span>
-                            </a>
-                          ))}
+                      
+                      {parsed.verifiedFiles && parsed.verifiedFiles.length > 0 && (
+                        <div style={{ marginBottom: "20px" }}>
+                          <h4 style={{ margin: "0 0 10px 0", color: "#4caf50", fontSize: "14px" }}>✅ Verified Files (Confident)</h4>
+                          <div className="file-timeline">
+                            {parsed.verifiedFiles.map((file, i) => (
+                              <a
+                                key={i}
+                                href={`https://github.com/${analyzedRepo.owner}/${analyzedRepo.repo}/find/HEAD?q=${encodeURIComponent(file.split('/').pop())}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="file-timeline-item"
+                                style={{ textDecoration: "none", color: "inherit", cursor: "pointer" }}
+                                title={`Search for ${file} in ${analyzedRepo.owner}/${analyzedRepo.repo}`}
+                              >
+                                <span>📁 {file}</span>
+                                <span className="timeline-badge" style={{ backgroundColor: "#4caf50" }}>Inspect Target</span>
+                              </a>
+                            ))}
+                          </div>
                         </div>
-                      ) : loading ? (
-                        <p style={{ color: "#888", fontSize: "14px" }}>Scanning repository contents to identify targets...</p>
-                      ) : (
-                        <p style={{ color: "#888", fontSize: "14px" }}>No specific files identified. Analysis complete.</p>
+                      )}
+
+                      {parsed.suggestedFiles && parsed.suggestedFiles.length > 0 && (
+                        <div>
+                          <h4 style={{ margin: "0 0 10px 0", color: "#ff9800", fontSize: "14px" }}>⚠️ Suggested Files to be Changed (Unverified)</h4>
+                          <div className="file-timeline">
+                            {parsed.suggestedFiles.map((file, i) => (
+                              <div
+                                key={i}
+                                className="file-timeline-item"
+                                style={{ borderLeft: "3px solid #ff9800", cursor: "default" }}
+                              >
+                                <span>📁 {file}</span>
+                                <span className="timeline-badge" style={{ backgroundColor: "#ff9800" }}>Suggestion Only</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {(!parsed.verifiedFiles || parsed.verifiedFiles.length === 0) && 
+                       (!parsed.suggestedFiles || parsed.suggestedFiles.length === 0) && (
+                        loading ? (
+                          <p style={{ color: "#888", fontSize: "14px" }}>Scanning repository contents to identify targets...</p>
+                        ) : (
+                          <p style={{ color: "#888", fontSize: "14px" }}>No specific files identified. Analysis complete.</p>
+                        )
                       )}
                     </div>
                   </div>
