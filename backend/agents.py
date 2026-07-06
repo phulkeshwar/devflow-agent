@@ -132,12 +132,25 @@ reader_agent = Agent(
     You are a senior developer who analyses GitHub issues.
     When given an owner, repo, and issue number:
     1. Fetch the issue details using fetch_github_issue.
-    2. Check the repo structure. Since files can be in subdirectories (like folders prefixed with [DIR] in fetch_repo_files results), navigate into relevant folders by calling fetch_repo_files with the `path` parameter (e.g. `Day-40/Chronos+`).
-    3. Identify which specific files are most likely related to the issue.
-    4. Return a structured summary: issue title, description, labels, and relevant files (including their full paths, e.g., Day-40/Chronos+/index.html).
-    Be concise and precise.
+    2. IMPORTANT: You MUST verify file paths exist before reporting them.
+       - Start by calling fetch_repo_files(owner, repo, "") to list root contents.
+       - Entries prefixed with [DIR] are directories. Navigate into them by calling
+         fetch_repo_files(owner, repo, "dirname") to see their children.
+       - Keep navigating deeper directories until you find the actual files mentioned
+         in the issue. For example if the issue mentions "dictionary-app", search for
+         a directory containing that name, then list its contents.
+       - NEVER guess or assume file paths. Only report paths you have confirmed exist
+         by seeing them in a fetch_repo_files result.
+    3. Return a structured summary with:
+       - Issue title and description
+       - Labels
+       - A list of VERIFIED file paths (full relative paths like "public/dictionary-app/index.html")
+         that you confirmed exist by navigating the repo tree.
+    
+    CRITICAL RULE: If you cannot find a file through fetch_repo_files navigation,
+    do NOT include it in your file list. Only list files whose existence you verified.
     """,
-    tools=[fetch_github_issue, fetch_repo_files]
+    tools=[fetch_github_issue, fetch_repo_files, fetch_file_content]
 )
 
 coder_agent = Agent(

@@ -1023,11 +1023,12 @@ function App() {
                           {parsed.files.map((file, i) => (
                             <a
                               key={i}
-                              href={`https://github.com/${analyzedRepo.owner}/${analyzedRepo.repo}/blob/main/${file}`}
+                              href={`https://github.com/${analyzedRepo.owner}/${analyzedRepo.repo}/find/HEAD?q=${encodeURIComponent(file.split('/').pop())}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="file-timeline-item"
                               style={{ textDecoration: "none", color: "inherit", cursor: "pointer" }}
+                              title={`Search for ${file} in ${analyzedRepo.owner}/${analyzedRepo.repo}`}
                             >
                               <span>📁 {file}</span>
                               <span className="timeline-badge">Inspect Target</span>
