@@ -1044,12 +1044,12 @@ function App() {
                             {parsed.verifiedFiles.map((file, i) => (
                               <a
                                 key={i}
-                                href={`https://github.com/${analyzedRepo.owner}/${analyzedRepo.repo}/find/HEAD?q=${encodeURIComponent(file.split('/').pop())}`}
+                                href={`https://github.com/${analyzedRepo.owner}/${analyzedRepo.repo}/blob/HEAD/${file}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="file-timeline-item"
                                 style={{ textDecoration: "none", color: "inherit", cursor: "pointer" }}
-                                title={`Search for ${file} in ${analyzedRepo.owner}/${analyzedRepo.repo}`}
+                                title={`Open ${file} in ${analyzedRepo.owner}/${analyzedRepo.repo}`}
                               >
                                 <span>📁 {file}</span>
                                 <span className="timeline-badge" style={{ backgroundColor: "#4caf50" }}>Inspect Target</span>
